@@ -1,0 +1,7 @@
+# Build output (python build.py writes the ~80 MB zip here)
+dist/
+__pycache__/
+*.pyc
+
+# Design explorations and previews (they include real course and assignment names)
+design/
