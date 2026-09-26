@@ -58,6 +58,27 @@ def save_state(ctx: BrowserContext) -> None:
     os.replace(tmp, STATE_PATH)
 
 
+def save_state_quietly(ctx: BrowserContext) -> None:
+    """save_state for the visible sign-in window. Playwright's storage_state() opens a
+    temporary tab for every site visited but not open right now, to read its storage;
+    in a visible window that makes Outlook and Microsoft tabs flash open and shut and
+    steal focus from the sign-in form. This reads the cookies and the storage of the
+    tabs already open instead, and keeps what the last save had for the other sites."""
+    origins = {}
+    with contextlib.suppress(Exception):
+        origins = {o["origin"]: o for o in json.loads(STATE_PATH.read_text(encoding="utf-8")).get("origins", [])}
+    for page in ctx.pages:
+        with contextlib.suppress(Exception):   # a tab mid-navigation: its storage waits for the next save
+            origin, items = page.evaluate("""() => [location.origin,
+              Object.keys(localStorage).map(k => ({name: k, value: localStorage.getItem(k)}))]""")
+            if origin.startswith("http"):
+                origins[origin] = {"origin": origin, "localStorage": items}
+    state = {"cookies": ctx.cookies(), "origins": list(origins.values())}
+    tmp = STATE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state), encoding="utf-8")
+    os.replace(tmp, STATE_PATH)
+
+
 on_browser_install: Callable[[], None] | None = None   # set by the app to tell the user
 
 
@@ -201,7 +222,7 @@ def interactive_login(settings: Settings) -> None:
         host = urlparse(base).netloc
         while ctx.pages:
             with contextlib.suppress(Exception):
-                save_state(ctx)
+                save_state_quietly(ctx)
             moodle_ok = moodle_page is None or moodle_page.is_closed() or _signed_in_moodle(moodle_page, host)
             outlook_ok = outlook_page is None or outlook_page.is_closed() or _signed_in_outlook(outlook_page)
             if moodle_ok and outlook_ok:
@@ -209,7 +230,7 @@ def interactive_login(settings: Settings) -> None:
                 break
             time.sleep(2)
         with contextlib.suppress(Exception):
-            save_state(ctx)
+            save_state_quietly(ctx)
         with contextlib.suppress(Exception):
             ctx.close()
 

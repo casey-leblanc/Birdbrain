@@ -6,7 +6,7 @@ and events from **Moodle** and **Outlook on the web**, using TypeSafe's
 
 ## Install (packaged app)
 
-1. Unzip `Birdbrain-1.0.0-windows.zip` anywhere you like, for example
+1. Unzip `Birdbrain-1.0.1-windows.zip` anywhere you like, for example
    `%LOCALAPPDATA%\Programs\Birdbrain`.
 2. Run `Birdbrain.exe`. No Python is needed. On first run it downloads its
    background browser once (about 100 MB), then carries on.
