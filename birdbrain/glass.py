@@ -32,9 +32,13 @@ BG_DIR = Path(__file__).parent / "assets" / "backgrounds"
 
 # Per scheme: title colour, exam chip (and its ink), focus ring, then per mode the glass tint, the dialog
 # tint and a fallback colour shown until the photo loads. High contrast also drops the see-through text.
+# tb_* override the window buttons' colour, glow and fade where a photo is too bright for white ones.
 SCHEMES = {
     "forest": dict(common=dict(title="rgba(255,255,255,.82)", lav="#DCD0FF", lav_ink="#21173F", focus="#FFFFFF"),
-                   light=dict(glass="rgba(36,41,51,.76)", sheet="rgba(34,39,50,.92)", bg="#7FA3D2"),
+                   # a bright sky behind the title bar: dark window buttons on a pale fade
+                   light=dict(glass="rgba(36,41,51,.76)", sheet="rgba(34,39,50,.92)", bg="#7FA3D2", tb_fg="#16212B",
+                              tb_shadow="0 0 6px rgba(255,255,255,.8)",
+                              tb_bg="linear-gradient(rgba(255,255,255,.4),rgba(255,255,255,.12) 70%,rgba(255,255,255,0))"),
                    dark=dict(glass="rgba(16,22,34,.64)", sheet="rgba(18,24,36,.92)", bg="#0A1230")),
     "birdbrain": dict(common=dict(title="#DDD5FF", lav="#D9D0FF", lav_ink="#21173F", focus="#FFFFFF"),
                       light=dict(glass="rgba(42,34,74,.74)", sheet="rgba(36,30,64,.92)", bg="#9C8BC9"),
@@ -71,7 +75,7 @@ def css(photo: Callable[[str], str | None]) -> str:
             v = {**sc["common"], **sc[mode]}
             url = photo(photo_name(key, mode))
             v["photo"] = f'url("{url}")' if url else "none"
-            props = ";".join(f"--g-{k.replace('_', '-')}:{val}" for k, val in v.items())
+            props = ";".join(f"--{'' if k.startswith('tb_') else 'g-'}{k.replace('_', '-')}:{val}" for k, val in v.items())
             blocks.append(f":root[data-theme={key}][data-mode={mode}]{{{props}}}")
     return BASE + "".join(blocks) + CSS
 
@@ -86,7 +90,6 @@ BASE = """
 
 CSS = """
 *{box-sizing:border-box}
-html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.3) transparent}
 body{margin:0;min-height:100vh;background:var(--g-bg);color:var(--g-t1);font:400 16px/1.5 "Birdbrain Sans","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
 body::before{content:"";position:fixed;inset:-10px;z-index:-1;background:var(--g-photo) center/cover no-repeat,var(--g-bg)}
 body.static .needs-app{display:none!important}
@@ -232,7 +235,9 @@ a.t:hover{text-decoration:underline;text-underline-offset:3px}
 .half.photo{min-height:64px;display:flex;align-items:flex-end;background:center/cover no-repeat}
 .half.photo span{font-size:.75rem;font-weight:700;color:#fff;background:rgba(0,0,0,.6);padding:0 6px;border-radius:4px}
 .theme-name{font-size:.85rem;color:var(--g-t2)}
-.theme-opt:has(input:checked) .swatch{outline:2px solid var(--g-t1);outline-offset:2px}
+.half{position:relative;cursor:pointer}
+.half:hover{filter:brightness(1.1)}
+.half:has(input:checked){box-shadow:inset 0 0 0 2px #FFFFFF,inset 0 0 0 4px #000000}
 .theme-opt:has(input:checked) .theme-name{color:var(--g-t1);font-weight:700}
 .theme-opt:has(input:focus-visible) .swatch{outline:2px solid var(--g-focus);outline-offset:4px}
 .seg{display:flex;flex-wrap:wrap;gap:8px}
@@ -252,6 +257,28 @@ fieldset.field{border:0;padding:0;margin:0 0 1rem}
 .form-error{font-size:1rem;color:#FFC2B8;margin-bottom:.6rem}.form-error:empty{display:none}
 .actions-row{display:flex;justify-content:flex-end;align-items:center;gap:1rem;margin-top:.6rem}
 .scan-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}.scan-row .field{margin:0;flex:1 1 200px}
+.btn-row{display:flex;flex-wrap:wrap;gap:10px;margin:.2rem 0 .4rem}
+.check{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;color:var(--g-t1)}
+.check input{width:18px;height:18px;margin:0;flex:none;accent-color:#FFFFFF}
+.sound-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 18px}
+/* the scrollbar: the panels' own tinted glass with the frame's white edge and bevel, blurring what's behind */
+:root{--sb-track:rgba(255,255,255,.07);--sb-track-edge:rgba(255,255,255,.2);--sb-blur:blur(10px) saturate(1.2);
+ --sb-thumb:var(--g-glass);--sb-thumb-hover:var(--g-sheet);--sb-thumb-edge:rgba(255,255,255,.7);
+ --sb-bevel:inset 1px 1px 2px rgba(255,255,255,.4),inset -1px -1px 2px rgba(0,0,0,.4),0 1px 6px rgba(0,0,0,.3)}
+.sheet-dialog::-webkit-scrollbar{width:14px}
+.sheet-dialog::-webkit-scrollbar-track{background:transparent;margin:12px 0}
+.sheet-dialog::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border:4px solid transparent;background-clip:padding-box;border-radius:999px;
+ box-shadow:inset 1px 1px 1px rgba(255,255,255,.3)}
+.sheet-dialog::-webkit-scrollbar-thumb:hover{background-color:rgba(255,255,255,.36)}
+:root{--tb-fg:#FFFFFF;--tb-hover:rgba(255,255,255,.14);--tb-scrolled:var(--g-glass);--tb-shadow:0 0 5px rgba(0,0,0,.55);
+--tb-bg:linear-gradient(rgba(0,0,0,.36),rgba(0,0,0,.12) 70%,rgba(0,0,0,0))}   /* keeps the buttons readable on bright skies */
+.app-window .wrap{margin-top:56px}
+.btn.danger{border-color:var(--g-red)}
+.btn.danger:hover{background:rgba(255,133,119,.25)}
+.kw-list li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:7px 0;border-bottom:1px solid var(--g-rule)}
+.kw{font-weight:700}.kw-n{flex:1;font-size:.85rem;color:var(--g-t2)}.kw-empty{color:var(--g-t2);font-style:italic;border:0!important}
+.kw-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-top:.8rem}.kw-add .field{margin:0;flex:1 1 220px}
+.gone{grid-column:1/-1;justify-self:center;font-size:1.25rem;color:var(--g-t1);margin:4rem 0}
 .courses li{display:grid;grid-template-columns:32px minmax(96px,auto) 1fr auto;grid-template-areas:"color code nick reset" ". warn warn warn";align-items:center;column-gap:12px;padding:6px 0}
 .courses input[type=color]{grid-area:color;appearance:none;-webkit-appearance:none;width:44px;height:44px;padding:8px;margin:-8px;border:0;border-radius:50%;background:none;cursor:pointer}
 .courses input[type=color]::-webkit-color-swatch-wrapper{padding:0}

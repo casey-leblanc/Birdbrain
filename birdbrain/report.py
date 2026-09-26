@@ -228,7 +228,8 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
     code, title = course_code(i), display_title(i)
     level = None if (reason or done) else test_level(i)
     tip = ", ".join(x for x in (html.unescape(i.title), i.course, SOURCE.get(i.source, "")) if x)
-    name = (f'<a class="t" href="{e(i.url)}" title="{e(tip)}">{e(title)}</a>' if i.url
+    name = (f'<a class="t" href="{e(i.url)}" target="_blank" rel="noopener noreferrer" title="{e(tip)}">'
+            f'{e(title)}</a>' if i.url
             else f'<span class="t" title="{e(tip)}">{e(title)}</span>')
     meta = ""
     if level and kinds:
@@ -348,29 +349,36 @@ def render_board(b: Board, settings: Settings, status: str, now: datetime, versi
     ])
 
 
+def keyword_counts(b: Board, keywords: list[str]) -> list[dict]:
+    """How many entries each hidden keyword is keeping off the list."""
+    return [{"keyword": k, "count": sum(1 for h in b.archived if filters.keyword_hit(h.item, [k]))} for k in keywords]
+
+
 def _theme_options(glass_layout: bool, photo) -> str:
-    """One card per theme, light half then dark half: its photos in the glass layout, its colours in classic."""
+    """One card per theme; its light (day) and dark (night) halves are each a choice. In the glass
+    layout the halves show the theme's photos, in classic its colours."""
     cards = ""
     for key, th in theme.THEMES.items():
         halves = ""
         for mode in ("light", "dark"):
             t = th["modes"][mode]
+            word = ("Day" if mode == "light" else "Night") if glass_layout else mode.capitalize()
+            radio = (f'<input type="radio" name="look" value="{key}:{mode}" '
+                     f'aria-label="{e(th["name"])}, {word.lower()}">')
             thumb = photo(glass.photo_name(key, mode, thumb=True)) if glass_layout else None
             if thumb:
-                halves += (f'<span class="half photo" style="background-image:url(&quot;{e(thumb)}&quot;)">'
-                           f'<span>{"Day" if mode == "light" else "Night"}</span></span>')
+                halves += (f'<label class="half photo" style="background-image:url(&quot;{e(thumb)}&quot;)">'
+                           f'{radio}<span>{word}</span></label>')
             else:
-                halves += (f'<span class="half" style="background:{t["bg"]}">'
+                halves += (f'<label class="half" style="background:{t["bg"]}">{radio}'
                            f'<span style="color:{t["text"]}">Aa</span> <span style="color:{t["struct"]}">Now</span> '
-                           f'<span style="color:{t["accent"]}">exam</span></span>')
-        cards += (f'<label class="theme-opt"><input type="radio" name="theme" value="{key}">'
-                  f'<span class="swatch">{halves}</span><span class="theme-name">{e(th["name"])}</span></label>')
+                           f'<span style="color:{t["accent"]}">exam</span></label>')
+        cards += (f'<div class="theme-opt"><div class="swatch">{halves}</div>'
+                  f'<span class="theme-name">{e(th["name"])}</span></div>')
     return cards
 
 
-def _settings_dialog(b: Board, now: datetime, glass_layout: bool, photo) -> str:
-    modes = "".join(f'<label><input type="radio" name="mode" value="{m}"><span>{label}</span></label>'
-                    for m, label in (("light", "Light"), ("dark", "Dark"), ("system", "Match system")))
+def _settings_dialog(b: Board, now: datetime, glass_layout: bool, photo, settings: Settings) -> str:
     layouts = "".join(f'<label><input type="radio" name="layout" value="{v}"><span>{label}</span></label>'
                       for v, label in (("glass", "Frosted glass"), ("classic", "Classic")))
     rows = "".join(
@@ -390,16 +398,38 @@ def _settings_dialog(b: Board, now: datetime, glass_layout: bool, photo) -> str:
         '<p class="hint">Frosted glass sets your list in glass panels over a photo; Classic is flat and typographic.</p></section>'
         '<section class="set-sec"><h3>Theme</h3>'
         f'<div class="themes" role="radiogroup" aria-label="Theme">{_theme_options(glass_layout, photo)}</div>'
-        f'<div class="seg mode" role="radiogroup" aria-label="Mode">{modes}</div></section>'
-        '<section class="set-sec needs-app"><h3>Outlook inbox</h3>'
-        '<p class="hint">Regular scans read your newest emails. To catch older ones, scan back to a date.</p>'
+        '<label class="check"><input type="checkbox" id="follow-system">'
+        "<span>Follow Windows' light and dark mode</span></label></section>"
+        '<section class="set-sec needs-app"><h3>Scanning</h3>'
+        f'<p class="hint">Birdbrain checks Moodle and Outlook every {settings.interval_minutes} minutes.</p>'
+        '<div class="btn-row"><button type="button" class="btn" id="scan-now">Scan now</button>'
+        '<button type="button" class="btn" id="scan-full">Full rescan of Moodle</button>'
+        '<button type="button" class="btn" id="sign-in">Sign in to Moodle and Outlook</button></div>'
+        '<div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
+        '<span>Squawk when something new is due</span></label>'
+        '<button type="button" class="act" id="sound-test">Play the squawk</button></div>'
+        '<p class="hint" id="scan-now-msg" aria-live="polite"></p>'
+        '<p class="hint">Regular scans read your newest emails. To catch older ones, scan the inbox back to a date.</p>'
         '<div class="scan-row"><label class="field"><span>Scan back to</span>'
         f'<input type="date" id="scan-since" value="{since}" max="{now.date().isoformat()}"></label>'
         '<button type="button" class="btn" id="scan-go">Scan inbox</button></div>'
         '<p class="hint" id="scan-msg" aria-live="polite"></p></section>'
+        '<section class="set-sec needs-app"><h3>Hidden keywords</h3>'
+        '<p class="hint">Entries whose title or course contains one of these words move to Archived.</p>'
+        '<ul class="kw-list" id="kw-list"></ul>'
+        '<form class="kw-add" id="kw-form" novalidate><label class="field"><span>Add a keyword</span>'
+        '<input id="kw-input" maxlength="80" autocomplete="off"></label>'
+        '<button type="submit" class="btn">Hide these entries</button></form>'
+        '<p class="form-error" id="kw-error" role="alert"></p></section>'
         '<section class="set-sec"><h3>Courses</h3>'
         '<p class="hint">Give each course code its own colour and a nickname. Changes apply right away.</p>'
-        f'{courses}</section></div></dialog>')
+        f'{courses}</section>'
+        '<section class="set-sec needs-app"><h3>App</h3>'
+        '<p class="hint">The settings file holds the scan interval, how far ahead to look and other options.</p>'
+        '<div class="btn-row"><button type="button" class="btn" data-open="settings">Open settings file</button>'
+        '<button type="button" class="btn" data-open="log">Open log</button>'
+        '<button type="button" class="btn danger" id="quit-app">Quit Birdbrain</button></div>'
+        '</section></div></dialog>')
 
 
 def _item_dialog(b: Board, now: datetime) -> str:
@@ -427,7 +457,7 @@ def _item_dialog(b: Board, now: datetime) -> str:
 
 
 def render(b: Board, settings: Settings, status: str, now: datetime, token: str = "", version: int = 0,
-           prefs: dict | None = None) -> str:
+           prefs: dict | None = None, app_window: bool = False) -> str:
     prefs = prefs or prefs_mod.DEFAULTS
     mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
     # "Match system" is resolved in the browser before the first paint.
@@ -436,22 +466,34 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
     glass_layout = prefs["layout"] == "glass"
     # Photos come from Birdbrain's own server on the live page, and straight from disk in the read-only copy.
     photo = (lambda n: f"/bg/{n}.jpg?token={token}") if token else glass.file_url
-    page_data = json.dumps({"prefs": prefs, "themes": list(theme.THEMES), "modes": list(theme.MODES)})
+    page_data = json.dumps({"prefs": prefs, "themes": list(theme.THEMES), "modes": list(theme.MODES),
+                            "keywords": keyword_counts(b, settings.hidden_keywords)})
     page_data = page_data.replace("</", "<\\/")   # can't close the <script> early
     return "".join([
-        f'<!doctype html><html lang="en" data-layout="{e(prefs["layout"])}" data-theme="{e(prefs["theme"])}" data-mode="{mode}" '
+        f'<!doctype html><html lang="en"{' class="app-window"' if app_window and token else ''} data-layout="{e(prefs["layout"])}" data-theme="{e(prefs["theme"])}" data-mode="{mode}" '
         f'data-mode-pref="{e(prefs["mode"])}">'
         '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{head_js}</script>",
-        f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}</style></head>",
+        f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
+        f"{TITLEBAR_CSS}{SCROLL_CSS}</style></head>",
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs),
-        f'</div>{_settings_dialog(b, now, glass_layout, photo)}{_item_dialog(b, now)}',
+        f'</div>{_settings_dialog(b, now, glass_layout, photo, settings)}{_item_dialog(b, now)}',
         '<div id="toast" role="status" aria-live="polite"></div>',
+        '<div class="gscroll" aria-hidden="true"><i></i></div>',
+        _TITLEBAR if app_window and token else "",
         f'<script type="application/json" id="page-data">{page_data}</script>',
         f"<script>{JS}</script></body></html>",
     ])
+
+
+_TITLEBAR = ('<div class="titlebar"><div class="edge" data-edge="top"></div><div class="edge l" data-edge="topleft"></div>'
+             '<div class="edge r" data-edge="topright"></div><div class="drag"></div>'
+             '<button type="button" class="win-btn" id="win-min" aria-label="Minimize" title="Minimize">&#xE921;</button>'
+             '<button type="button" class="win-btn" id="win-max" aria-label="Maximize" title="Maximize">'
+             '<span class="max">&#xE922;</span><span class="res">&#xE923;</span></button>'
+             '<button type="button" class="win-btn close" id="win-close" aria-label="Close" title="Close">&#xE8BB;</button></div>')
 
 
 def write(store: Store, settings: Settings, status: str) -> tuple[str, int]:
@@ -579,7 +621,9 @@ a.t:hover{text-decoration:underline;text-underline-offset:3px}
 .swatch{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:4px;overflow:hidden}
 .half{padding:9px 7px;font-size:.8rem;font-weight:600;white-space:nowrap;overflow:hidden}
 .theme-name{font-size:.8rem;color:var(--muted)}
-.theme-opt:has(input:checked) .swatch{outline:2px solid var(--struct);outline-offset:2px}
+.half{position:relative;cursor:pointer}
+.half:hover{filter:brightness(1.06)}
+.half:has(input:checked){box-shadow:inset 0 0 0 2px #FFFFFF,inset 0 0 0 4px #000000}
 .theme-opt:has(input:checked) .theme-name{color:var(--text);font-weight:600}
 .theme-opt:has(input:focus-visible) .swatch{outline:2px solid var(--focus);outline-offset:4px}
 .seg{display:flex;flex-wrap:wrap;gap:.2rem 1.2rem}
@@ -598,6 +642,22 @@ fieldset.field{border:0;padding:0;margin:0 0 1rem}
 .form-error{font-size:1rem;color:var(--accent);margin-bottom:.6rem}.form-error:empty{display:none}
 .actions-row{display:flex;justify-content:flex-end;align-items:center;gap:1rem;margin-top:.6rem}
 .scan-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}.scan-row .field{margin:0;flex:1 1 200px}
+.btn-row{display:flex;flex-wrap:wrap;gap:10px;margin:.2rem 0 .4rem}
+.check{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;color:var(--text)}
+.check input{width:18px;height:18px;margin:0;flex:none;accent-color:var(--struct)}
+.sound-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 18px}
+:root{--tb-fg:var(--text);--tb-hover:color-mix(in srgb,var(--text) 12%,transparent);--tb-scrolled:color-mix(in srgb,var(--bg) 88%,transparent);
+ --sb-track:transparent;--sb-track-edge:transparent;--sb-blur:none;--sb-bevel:none;
+ --sb-thumb:color-mix(in srgb,var(--struct) 38%,transparent);--sb-thumb-hover:color-mix(in srgb,var(--struct) 62%,transparent);--sb-thumb-edge:transparent}
+.sheet-dialog::-webkit-scrollbar{width:14px}
+.sheet-dialog::-webkit-scrollbar-track{background:transparent;margin:10px 0}
+.sheet-dialog::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--struct) 38%,transparent);border:4px solid transparent;background-clip:padding-box;border-radius:999px}
+.sheet-dialog::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb,var(--struct) 62%,transparent)}
+.btn.danger{color:var(--accent);border-color:var(--accent)}
+.kw-list li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.kw{font-weight:600}.kw-n{flex:1;font-size:.8rem;color:var(--muted)}.kw-empty{color:var(--muted);font-style:italic;border:0!important}
+.kw-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-top:.8rem}.kw-add .field{margin:0;flex:1 1 220px}
+.gone{font-size:1.25rem;color:var(--muted);margin:4rem 0}
 .courses li{display:grid;grid-template-columns:32px minmax(96px,auto) 1fr auto;grid-template-areas:"color code nick reset" ". warn warn warn";align-items:center;column-gap:12px;padding:6px 0}
 .courses input[type=color]{grid-area:color;appearance:none;-webkit-appearance:none;width:44px;height:44px;padding:8px;margin:-8px;border:0;border-radius:50%;background:none;cursor:pointer}
 .courses input[type=color]::-webkit-color-swatch-wrapper{padding:0}
@@ -618,6 +678,40 @@ h1{font-size:2.441rem}.band h2{font-size:1.953rem}
 .courses li{grid-template-columns:32px 1fr auto;grid-template-areas:"color code reset" ". nick nick" ". warn warn";row-gap:6px}}
 .no-anim *{transition:none!important}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+"""
+
+TITLEBAR_CSS = """
+/* the app window's own title bar (appwindow.py removes Windows' one): see-through, frosted once you scroll */
+.titlebar{display:none}
+.app-window .titlebar{display:flex;position:fixed;top:0;left:0;right:0;height:32px;z-index:40;user-select:none;-webkit-user-select:none;background:var(--tb-bg,transparent);transition:background-color .2s ease-out}
+.app-window.scrolled .titlebar{background:var(--tb-scrolled);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.titlebar .drag{flex:1}
+.titlebar .edge{position:absolute;top:0;left:0;right:0;height:5px;cursor:n-resize;z-index:1}
+.titlebar .edge.l,.titlebar .edge.r{width:10px}.titlebar .edge.l{cursor:nw-resize}.titlebar .edge.r{left:auto;cursor:ne-resize}
+.maximized .titlebar .edge{display:none}
+.win-btn{width:46px;height:32px;border:0;border-radius:0;padding:0;background:transparent;color:var(--tb-fg);text-shadow:var(--tb-shadow,none);font:10px/1 "Segoe Fluent Icons","Segoe MDL2 Assets",sans-serif;display:grid;place-items:center;cursor:default;transition:background-color .1s}
+.win-btn:hover{background:var(--tb-hover)}
+.win-btn.close:hover{background:#C42B1C;color:#FFFFFF}
+.win-btn:focus-visible{outline:2px solid currentColor;outline-offset:-4px;border-radius:0}
+.win-btn .res{display:none}.maximized .win-btn .max{display:none}.maximized .win-btn .res{display:inline}
+@media (prefers-reduced-motion:reduce){.titlebar,.win-btn{transition:none}}
+"""
+
+SCROLL_CSS = """
+/* the page's own scrollbar (Windows' one is hidden): it floats over the page, starts under the title bar,
+   rests faintly, and comes forward while you scroll or point at it. Colours come from the layout (--sb-*). */
+html{scrollbar-width:none}html::-webkit-scrollbar{display:none}
+.gscroll{display:none;position:fixed;top:8px;bottom:8px;right:4px;width:10px;z-index:45;border-radius:999px;
+ background:var(--sb-track);border:1px solid var(--sb-track-edge);-webkit-backdrop-filter:var(--sb-blur);backdrop-filter:var(--sb-blur);
+ opacity:.6;transition:opacity .25s ease-out,width .15s ease-out}
+.app-window .gscroll{top:38px}
+.gscroll.on{display:block}
+.gscroll.moving,.gscroll:hover,.gscroll.active{opacity:1}
+.gscroll:hover,.gscroll.active{width:14px}
+.gscroll i{position:absolute;left:1px;right:1px;top:0;border-radius:999px;background:var(--sb-thumb);border:1px solid var(--sb-thumb-edge);
+ box-shadow:var(--sb-bevel);-webkit-backdrop-filter:var(--sb-blur);backdrop-filter:var(--sb-blur);transition:background-color .15s}
+.gscroll i:hover,.gscroll.active i{background:var(--sb-thumb-hover)}
+@media (prefers-reduced-motion:reduce){.gscroll,.gscroll i{transition:none}}
 """
 
 JS = """(function(){
@@ -728,20 +822,115 @@ var media=matchMedia('(prefers-color-scheme: light)');
 function applyTheme(){
   root.classList.add('no-anim');   /* switch colours instantly, not via hover transitions */
   root.dataset.theme=PREFS.theme;root.dataset.modePref=PREFS.mode;
-  root.dataset.mode=PREFS.mode==='system'?(media.matches?'light':'dark'):PREFS.mode;syncCourseInputs();
+  root.dataset.mode=PREFS.mode==='system'?(media.matches?'light':'dark'):PREFS.mode;syncCourseInputs();syncLook();
   requestAnimationFrame(function(){requestAnimationFrame(function(){root.classList.remove('no-anim');});});}
 media.addEventListener('change',function(){if(PREFS.mode==='system')applyTheme();});
-settings.querySelectorAll('input[name=theme]').forEach(function(r){
-  r.checked=r.value===PREFS.theme;
-  r.addEventListener('change',function(){PREFS.theme=r.value;applyTheme();savePrefs({theme:r.value});});});
+/* each theme's day (light) and night (dark) halves are the choices */
+var followSys=document.getElementById('follow-system');
+function syncLook(){settings.querySelectorAll('input[name=look]').forEach(function(r){
+  r.checked=r.value===PREFS.theme+':'+root.dataset.mode;});followSys.checked=PREFS.mode==='system';}
+settings.querySelectorAll('input[name=look]').forEach(function(r){r.addEventListener('change',function(){
+  var v=r.value.split(':');PREFS.theme=v[0];PREFS.mode=v[1];applyTheme();savePrefs({theme:v[0],mode:v[1]});});});
+followSys.addEventListener('change',function(){PREFS.mode=followSys.checked?'system':root.dataset.mode;
+  applyTheme();savePrefs({mode:PREFS.mode});});
+syncLook();
 /* Each layout has its own stylesheet, so switching layout saves and reloads the page. */
 settings.querySelectorAll('input[name=layout]').forEach(function(r){
   r.checked=r.value===PREFS.layout;
   r.addEventListener('change',function(){if(!LIVE){toast('Open the list from the Birdbrain icon to change the layout');return;}
     api('/api/prefs',{layout:r.value}).then(function(){location.reload();}).catch(function(e){toast("Couldn't save: "+e.message);});});});
-settings.querySelectorAll('input[name=mode]').forEach(function(r){
-  r.checked=r.value===PREFS.mode;
-  r.addEventListener('change',function(){PREFS.mode=r.value;applyTheme();savePrefs({mode:r.value});});});
+/* the squawk when something new is due */
+var soundOn=document.getElementById('sound-on');soundOn.checked=PREFS.sound!==false;
+soundOn.addEventListener('change',function(){PREFS.sound=soundOn.checked;savePrefs({sound:soundOn.checked});});
+document.getElementById('sound-test').addEventListener('click',function(){api('/api/sound').catch(function(e){toast(e.message);});});
+
+/* the page's own scrollbar: the thumb follows the page; drag it, or click the rail to page up or down */
+(function(){
+  var bar=document.querySelector('.gscroll');if(!bar)return;
+  var thumb=bar.firstElementChild,se=document.scrollingElement,drag=null,resting,raf=0,
+      smooth=matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+  function metrics(){var track=bar.clientHeight,view=se.clientHeight,full=se.scrollHeight,
+    h=Math.max(36,track*view/Math.max(full,1));return {track:track,h:Math.min(h,track),max:full-view};}
+  function paint(){raf=0;var m=metrics();bar.classList.toggle('on',m.max>1);if(m.max<=1)return;
+    thumb.style.height=m.h+'px';thumb.style.transform='translateY('+((m.track-m.h)*se.scrollTop/m.max)+'px)';}
+  function later(){if(!raf)raf=requestAnimationFrame(paint);}
+  addEventListener('scroll',function(){later();bar.classList.add('moving');clearTimeout(resting);
+    resting=setTimeout(function(){bar.classList.remove('moving');},900);},{passive:true});
+  addEventListener('resize',later);
+  if(window.ResizeObserver)new ResizeObserver(later).observe(document.body);   /* refreshes, bins opening */
+  thumb.addEventListener('pointerdown',function(ev){if(ev.button!==0)return;ev.preventDefault();
+    var m=metrics();drag={y:ev.clientY,top:se.scrollTop,per:m.max/Math.max(1,m.track-m.h)};
+    thumb.setPointerCapture(ev.pointerId);bar.classList.add('active');});
+  thumb.addEventListener('pointermove',function(ev){if(drag)se.scrollTop=drag.top+(ev.clientY-drag.y)*drag.per;});
+  function end(){drag=null;bar.classList.remove('active');}
+  thumb.addEventListener('pointerup',end);thumb.addEventListener('pointercancel',end);
+  bar.addEventListener('pointerdown',function(ev){if(ev.target!==bar||ev.button!==0)return;
+    var r=thumb.getBoundingClientRect();se.scrollBy({top:(ev.clientY<r.top?-1:1)*se.clientHeight*.9,behavior:smooth});});
+  paint();
+})();
+
+/* the app window's own title bar: a press on it moves the window the way Windows' own bar would */
+if(root.classList.contains('app-window')){
+  var tb=document.querySelector('.titlebar'),lastDown=0;
+  function win(name,arg){var a=window.pywebview&&window.pywebview.api;if(a&&a[name])return arg===undefined?a[name]():a[name](arg);}
+  window.birdbrainWindow={maximized:function(on){root.classList.toggle('maximized',!!on);
+    document.getElementById('win-max').setAttribute('aria-label',on?'Restore':'Maximize');
+    document.getElementById('win-max').title=on?'Restore':'Maximize';}};
+  tb.querySelector('.drag').addEventListener('mousedown',function(ev){if(ev.button!==0)return;
+    var now=Date.now();if(now-lastDown<400){lastDown=0;win('toggle_maximize');return;}lastDown=now;win('drag','move');});
+  tb.querySelectorAll('[data-edge]').forEach(function(el){el.addEventListener('mousedown',function(ev){
+    if(ev.button===0)win('drag',el.dataset.edge);});});
+  document.getElementById('win-min').addEventListener('click',function(){win('minimize');});
+  document.getElementById('win-max').addEventListener('click',function(){win('toggle_maximize');});
+  document.getElementById('win-close').addEventListener('click',function(){win('close');});
+  addEventListener('scroll',function(){root.classList.toggle('scrolled',scrollY>4);},{passive:true});
+  addEventListener('pywebviewready',function(){var a=window.pywebview.api;
+    a.framed().then(function(ok){if(!ok)root.classList.remove('app-window');});
+    a.is_maximized().then(function(m){birdbrainWindow.maximized(m);});});
+}
+
+/* the tray menu's actions: scan, sign in, hidden keywords, files, quit */
+var nowMsg=document.getElementById('scan-now-msg');
+function follow(el){var seen=false,tries=0,iv=setInterval(function(){status().then(function(s){
+  if(s.scanning){seen=true;el.textContent=s.status;}
+  if((seen&&!s.scanning)||(!seen&&++tries>5)){clearInterval(iv);el.textContent=s.status;refreshBoard();}
+}).catch(function(){clearInterval(iv);});},2000);}
+function startScan(full){api('/api/scan',full?{full:true}:{}).then(function(){
+  nowMsg.textContent=full?'Full Moodle scan starting. This can take a few minutes.':'Scan starting…';follow(nowMsg);})
+  .catch(function(e){nowMsg.textContent=e.message;});}
+document.getElementById('scan-now').addEventListener('click',function(){startScan(false);});
+document.getElementById('scan-full').addEventListener('click',function(){startScan(true);});
+document.getElementById('sign-in').addEventListener('click',function(){api('/api/sign-in').then(function(){
+  nowMsg.textContent="The sign-in window is opening. It closes by itself once you're signed in.";})
+  .catch(function(e){nowMsg.textContent=e.message;});});
+settings.querySelectorAll('[data-open]').forEach(function(b){b.addEventListener('click',function(){
+  api('/api/open',{what:b.dataset.open}).then(function(){toast(b.dataset.open==='log'?'Opened the log':'Opened the settings file');})
+  .catch(function(e){toast(e.message);});});});
+var quit=document.getElementById('quit-app');
+quit.addEventListener('click',function(){
+  if(!quit.dataset.armed){quit.dataset.armed='1';quit.textContent='Click again to quit';
+    setTimeout(function(){delete quit.dataset.armed;quit.textContent='Quit Birdbrain';},4000);return;}
+  api('/api/quit').then(function(){settings.close();wrap.innerHTML='<p class="gone">Birdbrain has quit. To use it again, start Birdbrain.exe.</p>';})
+    .catch(function(e){toast(e.message);});});
+var KW=DATA.keywords||[],kwList=document.getElementById('kw-list'),kwForm=document.getElementById('kw-form'),
+    kwInput=document.getElementById('kw-input'),kwError=document.getElementById('kw-error');
+function renderKw(){kwList.textContent='';
+  if(!KW.length){var none=document.createElement('li');none.className='kw-empty';none.textContent='No hidden keywords.';kwList.appendChild(none);return;}
+  KW.forEach(function(k,i){var li=document.createElement('li'),w=document.createElement('span'),n=document.createElement('span'),
+    rm=document.createElement('button');
+    w.className='kw';w.textContent=k.keyword;n.className='kw-n';n.textContent=k.count+(k.count===1?' entry':' entries')+' hidden';
+    rm.type='button';rm.className='act';rm.textContent='Remove';rm.setAttribute('aria-label','Stop hiding “'+k.keyword+'”');
+    rm.addEventListener('click',function(){saveKw(KW.filter(function(_,j){return j!==i;}).map(function(x){return x.keyword;}),
+      'No longer hiding “'+k.keyword+'”');});
+    li.appendChild(w);li.appendChild(n);li.appendChild(rm);kwList.appendChild(li);});}
+function saveKw(list,msg){kwError.textContent='';
+  return api('/api/keywords',{keywords:list}).then(function(r){KW=r.keywords;renderKw();refreshBoard();toast(msg);})
+    .catch(function(e){kwError.textContent=e.message;});}
+kwForm.addEventListener('submit',function(ev){ev.preventDefault();var v=kwInput.value.split(' ').filter(Boolean).join(' ').trim();
+  if(!v){kwError.textContent='Type a word to hide.';kwInput.focus();return;}
+  if(KW.some(function(k){return k.keyword.toLowerCase()===v.toLowerCase();})){kwError.textContent='“'+v+'” is already hidden.';return;}
+  saveKw(KW.map(function(k){return k.keyword;}).concat([v]),'Hiding entries with “'+v+'”').then(function(){kwInput.value='';});});
+renderKw();
 
 /* inbox scan back to a date */
 var scanGo=document.getElementById('scan-go'),scanMsg=document.getElementById('scan-msg');

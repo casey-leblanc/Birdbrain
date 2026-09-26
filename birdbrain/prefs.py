@@ -1,5 +1,5 @@
-"""Display preferences set on the list page: layout, theme, light/dark mode,
-course tag colors and nicknames, and which bins are open.
+"""Display preferences set on the list page: layout, theme, light/dark mode, the
+new-item squawk, course tag colors and nicknames, and which bins are open.
 
 They're kept in Birdbrain's database rather than the browser, because the list
 page's address changes whenever Birdbrain restarts and browsers keep storage
@@ -16,7 +16,7 @@ from store import Store
 KEY = "ui_prefs"
 BINS = ("completed", "archived")
 DEFAULTS = {"layout": theme.DEFAULT_LAYOUT, "theme": theme.DEFAULT_THEME, "mode": theme.DEFAULT_MODE,
-            "courses": {}, "bins": {}, "imported": False}
+            "sound": True, "courses": {}, "bins": {}, "imported": False}
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -50,6 +50,8 @@ def update(store: Store, patch: dict) -> dict:
         if patch["mode"] not in theme.MODES:
             raise ValueError("Unknown mode.")
         p["mode"] = patch["mode"]
+    if "sound" in patch:
+        p["sound"] = bool(patch["sound"])
     if "courses" in patch:  # {code: {nick, color}} or {code: null} to reset
         if not isinstance(patch["courses"], dict) or len(patch["courses"]) > 100:
             raise ValueError("Bad course settings.")

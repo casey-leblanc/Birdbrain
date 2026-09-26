@@ -77,6 +77,15 @@ def run(out: Path) -> int:
             return f"{ctx.browser.version}, 3 columns rendered"
     check("scanner browser (installs itself if missing)", scanner_browser)
 
+    check("app window (WebView2)", lambda: __import__("appwindow").check())
+
+    def sound():
+        import wave
+        import main
+        with wave.open(str(main.SQUAWK)) as w:
+            return f"squawk bundled, {w.getnframes() / w.getframerate():.2f} s"
+    check("new-item squawk", sound)
+
     def icon():
         import main
         img = main.make_icon(3)
