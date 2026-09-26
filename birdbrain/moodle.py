@@ -22,7 +22,7 @@ from playwright.sync_api import BrowserContext, Page
 
 from browser import NeedsLogin, moodle_sso
 from config import CHUNK_CHARS, Settings
-from jev import Jev
+from jev import EXAM_RE, Jev
 from store import Item, Store, text_hash
 
 log = logging.getLogger(__name__)
@@ -57,6 +57,13 @@ def _plain(s: str) -> str:
     """Moodle's web services return names HTML-escaped ("FD&amp;C") and
     descriptions as HTML; store plain text and let the report escape once."""
     return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", s or "")).split())
+
+
+def _level(title: str, module: str, kind: str) -> str:
+    """A test from Moodle's quiz activity is a quiz unless its title says exam, midterm, final or test."""
+    if module == "quiz" and kind == "test":
+        return "exam" if EXAM_RE.search(title) else "quiz"
+    return ""
 
 
 def _cm_id(url: str) -> str | None:
@@ -107,6 +114,8 @@ class Moodle:
         return first["data"]
 
     def _kind(self, title: str, module: str) -> str:
+        if module == "quiz":   # decided from the title alone (no Jev call), so nothing to cache
+            return self.jev.classify_title(title, module)
         key = "kind:" + text_hash(module + "|" + title)
         cached = self.store.get_meta(key)
         if cached:
@@ -160,8 +169,9 @@ class Moodle:
                 self.store.delete(f"moodle:idx:{cm}")  # timeline supersedes index-page copy
                 title = _plain(e.get("activityname") or e.get("name", ""))
                 module = e.get("modulename", "")
+                kind = self._kind(title, module)
                 item = Item(
-                    id=item_id, source="moodle", kind=self._kind(title, module), title=title,
+                    id=item_id, source="moodle", kind=kind, title=title, level=_level(title, module, kind),
                     due=datetime.fromtimestamp(e["timesort"]),
                     course=_plain((e.get("course") or {}).get("shortname") or (e.get("course") or {}).get("fullname", "")),
                     url=e.get("url", ""), detail=_plain(e.get("name", "")),
@@ -230,8 +240,9 @@ class Moodle:
                 cm = _cm_id(r["link"])
                 if self.store.exists(f"moodle:cm:{cm}"):
                     continue  # already tracked via the timeline
-                item = Item(id=f"moodle:idx:{cm}", source="moodle", kind=self._kind(r["name"], module),
-                            title=r["name"], due=due, course=cname, url=r["link"])
+                kind = self._kind(r["name"], module)
+                item = Item(id=f"moodle:idx:{cm}", source="moodle", kind=kind, title=r["name"],
+                            level=_level(r["name"], module, kind), due=due, course=cname, url=r["link"])
                 if self.store.upsert(item):
                     new.append(item)
         return new

@@ -175,8 +175,12 @@ class Jev:
     def classify_title(self, title: str, module: str = "") -> str:
         """Moodle already gives exact dates; only ask what kind of item it is
         (a 'quiz' module named 'Midterm' is a test, a 'page' named 'Essay 2' is not)."""
-        if module in ("quiz",):
-            return "test"
+        if module == "quiz":
+            # Moodle's quiz activity also holds surveys, check-ins and graded work named
+            # "... Assignment", so the title decides. One that names neither is a quiz.
+            if _TEST_RE.search(title):
+                return "test"
+            return "assignment" if _ASSIGN_RE.search(title) else "test"
         if module in ("assign", "workshop", "turnitintooltwo", "lti"):
             base = "assignment"
         else:
@@ -206,6 +210,9 @@ class Jev:
 
 # --- keyword fallback (no API key) -------------------------------------------
 _TEST_RE = re.compile(r"\b(exam|midterm|mid-term|final|quiz|test)\b", re.I)
+# Exam or quiz, for items that are tests (report.test_level and Moodle's quiz activities).
+EXAM_RE = re.compile(r"\b(exams?|midterms?|mid-terms?|finals?|tests?)\b", re.I)
+QUIZ_RE = re.compile(r"\bquiz(zes)?\b", re.I)
 _ASSIGN_RE = re.compile(r"\b(assignment|homework|due|submit|submission|essay|lab report|project|problem set)\b", re.I)
 _EVENT_RE = re.compile(r"\b(meeting|lecture|seminar|office hours|presentation|deadline|register)\b", re.I)
 

@@ -30,6 +30,7 @@ import glass
 import prefs as prefs_mod
 import theme
 from config import REPORT_PATH, Settings
+from jev import EXAM_RE, QUIZ_RE
 from store import Item, Store
 
 SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outlook calendar",
@@ -37,8 +38,6 @@ SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outl
 NOT_COURSES = ("Email", "Calendar", "Personal")
 e = html.escape
 
-_QUIZ = re.compile(r"\bquiz(zes)?\b", re.I)
-_EXAM = re.compile(r"\b(exams?|midterms?|mid-terms?|finals?|tests?)\b", re.I)
 
 
 @dataclass
@@ -83,16 +82,17 @@ def window(store: Store, settings: Settings, now: datetime) -> list[Item]:
 
 def test_level(i: Item) -> str | None:
     """'exam' for exams/tests/midterms/finals, 'quiz' for quizzes, None otherwise.
-    Items you added say which they are; otherwise the title decides, and an
-    assessment that names neither is treated as an exam so none gets missed."""
+    Items you added and Moodle quiz activities say which they are; otherwise the
+    title decides, and an assessment that names neither is treated as an exam so
+    none gets missed."""
     if i.kind != "test":
         return None
     if i.level in ("exam", "quiz"):
         return i.level
     t = display_title(i)
-    if _EXAM.search(t):
+    if EXAM_RE.search(t):
         return "exam"
-    return "quiz" if _QUIZ.search(t) else "exam"
+    return "quiz" if QUIZ_RE.search(t) else "exam"
 
 
 def build(store: Store, settings: Settings, now: datetime | None = None) -> Board:
