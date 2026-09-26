@@ -45,7 +45,7 @@ THEMES = {
                    struct="#4B3F8F", muted="#62646E", accent="#A3261C", accent_ink="#FFFFFF", focus="#4B3F8F"),
         dark=dict(bg="#17182B", col="#1F2138", hover="#272A45", line="#373B5E", text="#ECEDF5", head="#ECEDF5",
                   struct="#B7ABFF", muted="#A6A9BC", accent="#FF8F7E", accent_ink="#17182B", focus="#B7ABFF"))),
-    "night": dict(name="Night study", modes=dict(
+    "night": dict(name="Cozy", modes=dict(
         dark=dict(bg="#16211D", col="#1B2823", hover="#21312B", line="#2C3E36", text="#E9E6DC", head="#E9E6DC",
                   struct="#86CDBF", muted="#A3AEA6", accent="#F0A24A", accent_ink="#16211D", focus="#F0A24A"),
         light=dict(bg="#EDF1EC", col="#F8FAF6", hover="#E3E9E3", line="#CBD6CE", text="#16211D", head="#16211D",

@@ -1,7 +1,8 @@
 """Birdbrain: a system-tray app that keeps a daily list of assignments,
-tests and events from Moodle and Outlook on the web.
+tests and events from Moodle and Outlook on the web, shown in its own window.
 
 Run with:  pythonw main.py   (no console window), or the packaged Birdbrain.exe.
+Add --background to start in the tray without opening the window (for Startup).
 """
 from __future__ import annotations
 
@@ -27,12 +28,13 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw, ImageFont
 
+import appwindow
 import filters
 import prefs
 import report
 import theme
 from browser import NeedsLogin, interactive_login, open_context
-from config import CONFIG_PATH, LOG_PATH, STATE_PATH, Settings, migrate_old_data
+from config import CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, migrate_old_data
 from jev import Jev
 from keyword_dialog import edit_keywords
 from moodle import Moodle
@@ -42,6 +44,17 @@ from server import ListServer
 from store import Store
 
 log = logging.getLogger("birdbrain")
+SQUAWK = Path(__file__).parent / "assets" / "sounds" / "squawk.wav"
+
+
+def squawk() -> None:
+    """The little squawk for something new that's due (Settings can turn it off)."""
+    try:
+        import winsound
+        winsound.PlaySound(str(SQUAWK), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+    except Exception:
+        log.exception("Couldn't play the squawk")
+SHOW_EVENT = "Local\\BirdbrainShowWindow"   # a second launch sets this to bring the window up
 
 
 def make_icon(badge: int | None = None, size: int = 64) -> Image.Image:
@@ -77,8 +90,10 @@ class App:
         self.scanning = False
         self.mail_since: date | None = None   # inbox scan requested from the list page
         self.server: ListServer | None = None
+        self.window: appwindow.AppWindow | None = None
+        # Left-click runs the default item: open the app window.
         self.icon = pystray.Icon("Birdbrain", make_icon(), "Birdbrain", menu=pystray.Menu(
-            pystray.MenuItem("Show today's list", self.on_show, default=True),
+            pystray.MenuItem("Open Birdbrain", self.on_show, default=True),
             pystray.MenuItem("Refresh now", self.on_refresh),
             pystray.MenuItem("Full rescan of Moodle", self.on_full),
             pystray.MenuItem("Hide entries by keyword…", self.on_keywords),
@@ -91,20 +106,22 @@ class App:
 
     # --- menu actions -----------------------------------------------------------
     def on_show(self, *_):
-        if self.server:
+        if self.window:
+            threading.Thread(target=self.window.show, daemon=True).start()   # waits for the window if it's starting
+        elif self.server:
             webbrowser.open(self.server.url)
         else:  # server didn't start: fall back to the read-only copy
             path, _ = write_report(self.store, self.settings, self.status)
             webbrowser.open(f"file:///{path}")
 
     # --- list page (served by server.ListServer) ---------------------------------
-    def _render(self, token: str, board: bool = False) -> str:
+    def _render(self, token: str, board: bool = False, app_window: bool = False) -> str:
         now = datetime.now()
         b = report.build(self.store, self.settings, now)
         saved = prefs.load(self.store)
         if board:
             return report.render_board(b, self.settings, self.status, now, self.store.version, saved)
-        return report.render(b, self.settings, self.status, now, token, self.store.version, saved)
+        return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window)
 
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
@@ -120,7 +137,8 @@ class App:
             self.server = ListServer(self.store, render_page=self._render,
                                      render_board=lambda token: self._render(token, board=True),
                                      status=self._page_status, request_mail_scan=self.request_mail_scan,
-                                     on_change=self._refresh_view, port=self._last_port())
+                                     on_change=self._refresh_view, port=self._last_port(),
+                                     actions=self._page_actions())
             self.server.start()
             self.store.set_meta("server_port", str(self.server.port))
         except Exception:
@@ -138,6 +156,53 @@ class App:
             return int(ports[-1]) if ports else 0
         except OSError:
             return 0
+
+    # --- the tray menu's actions, for the Settings sheet on the list page -------------
+    def _page_actions(self) -> dict:
+        return {"scan": self.api_scan, "sign-in": self.api_sign_in, "keywords": self.api_keywords,
+                "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound}
+
+    def api_sound(self, body: dict) -> dict:
+        squawk()   # "Play the squawk" in Settings
+        return {"ok": True}
+
+    def api_scan(self, body: dict) -> dict:
+        if body.get("full"):
+            self.force_full = True
+        self.wake.set()
+        return {"ok": True}
+
+    def api_sign_in(self, body: dict) -> dict:
+        self.on_login()
+        return {"ok": True}
+
+    def api_keywords(self, body: dict) -> dict:
+        words = body.get("keywords")
+        if not isinstance(words, list) or len(words) > 50:
+            raise ValueError("Couldn't read the keyword list.")
+        clean: list[str] = []
+        for w in words:
+            w = " ".join(str(w).split())[:80]
+            if w and w.lower() not in (c.lower() for c in clean):
+                clean.append(w)
+        self.settings = Settings.load()
+        self.settings.hidden_keywords = clean
+        self.settings.save()
+        log.info("Hidden keywords now %s", clean)
+        self.store.touch()   # open list pages pick up the change
+        self._refresh_view()
+        return {"ok": True, "keywords": report.keyword_counts(report.build(self.store, self.settings), clean)}
+
+    def api_open(self, body: dict) -> dict:
+        path = {"settings": CONFIG_PATH, "log": LOG_PATH}.get(body.get("what"))
+        if not path:
+            raise ValueError("Nothing to open.")
+        os.startfile(path)
+        return {"ok": True}
+
+    def api_quit(self, body: dict) -> dict:
+        threading.Timer(0.5, self.on_quit).start()   # answer the page first
+        return {"ok": True}
 
     def on_refresh(self, *_):
         self.wake.set()
@@ -177,6 +242,8 @@ class App:
         if self.server:
             self.server.stop()
         self.icon.stop()
+        if self.window:
+            self.window.quit()
 
     def notify(self, msg: str, title: str = "Birdbrain"):
         if self.settings.notify:
@@ -256,6 +323,8 @@ class App:
             soon = sorted(new, key=lambda i: i.due)[:3]
             lines = "\n".join(f"{i.title[:50]} ({i.due:%a %b %d})" for i in soon)
             self.notify(lines, f"{len(new)} new item{'s' if len(new) > 1 else ''}")
+            if prefs.load(self.store).get("sound", True):
+                squawk()
         self._daily_digest(due_today)
 
     def _refresh_view(self) -> int:
@@ -296,12 +365,69 @@ class App:
                 self.wake.wait(self.settings.interval_minutes * 60)
                 self.wake.clear()
 
-    def run(self):
-        def setup(icon):
-            icon.visible = True
-            self._start_server()
-            threading.Thread(target=self.loop, daemon=True).start()
-        self.icon.run(setup=setup)
+    def run(self, show: bool = True) -> None:
+        """The app window owns the main thread; the tray icon, scans and the list server run beside it."""
+        self._start_server()
+        self._listen_for_show()
+        threading.Thread(target=self.loop, daemon=True, name="scans").start()
+        threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
+                         daemon=True, name="tray").start()
+        if self.server and appwindow.available():
+            try:
+                self.window = appwindow.AppWindow(self.server.url, icon_path=_window_icon())
+                self.window.run(show=show)   # returns once Birdbrain quits
+            except Exception:
+                log.exception("The app window failed; the list opens in the browser instead")
+            if self.stop.is_set():
+                return
+            self.window = None
+        if show:
+            self.on_show()
+        self.stop.wait()
+
+    def _listen_for_show(self) -> None:
+        """Starting Birdbrain while it's already running (a pinned taskbar icon, say) brings the window up."""
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.WinDLL("kernel32")
+        k.CreateEventW.restype = wintypes.HANDLE
+        k.CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        handle = k.CreateEventW(None, False, False, SHOW_EVENT)
+
+        def wait():
+            while handle and not self.stop.is_set():
+                if k.WaitForSingleObject(handle, 1000) == 0:   # WAIT_OBJECT_0: signalled
+                    self.on_show()
+        threading.Thread(target=wait, daemon=True, name="show-signal").start()
+
+
+def _window_icon() -> str | None:
+    """The packaged app's window takes Birdbrain.exe's icon; from source, give it the same one."""
+    if getattr(sys, "frozen", False):
+        return None
+    path = DATA_DIR / "birdbrain.ico"
+    if not path.exists():
+        make_icon(size=256).save(path, sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+    return str(path)
+
+
+def show_running_copy() -> bool:
+    """Ask the Birdbrain that's already running to show its window. False if it can't be reached."""
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32")
+    k.OpenEventW.restype = wintypes.HANDLE
+    k.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    k.SetEvent.argtypes = [wintypes.HANDLE]
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    ctypes.windll.user32.AllowSetForegroundWindow(-1)   # ASFW_ANY: let its window come to the front
+    handle = k.OpenEventW(0x0002, False, SHOW_EVENT)      # EVENT_MODIFY_STATE
+    if not handle:
+        return False
+    k.SetEvent(handle)
+    k.CloseHandle(handle)
+    return True
 
 
 def first_run_setup() -> None:
@@ -339,10 +465,11 @@ if __name__ == "__main__":
             else Path.cwd() / "birdbrain-selftest.txt"
         sys.exit(selftest.run(out))
     if already_running():
-        import tkinter as tk
-        from tkinter import messagebox
-        root = tk.Tk(); root.withdraw()
-        messagebox.showinfo("Birdbrain", "Birdbrain is already running. Use its icon in the system tray.")
+        if not show_running_copy():   # an older copy without the signal
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk(); root.withdraw()
+            messagebox.showinfo("Birdbrain", "Birdbrain is already running. Use its icon in the system tray.")
         sys.exit(0)
     moved = migrate_old_data()   # before logging opens the log file
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -355,4 +482,4 @@ if __name__ == "__main__":
     import browser
     browser.on_browser_install = lambda: app.notify(
         "Setting up Birdbrain's background browser. This one-time download takes a minute or two.")
-    app.run()
+    app.run(show="--background" not in sys.argv)

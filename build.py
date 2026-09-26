@@ -6,7 +6,7 @@ Produces dist/Birdbrain-<version>-windows.zip containing a Birdbrain folder with
 Birdbrain.exe. Recipients unzip it anywhere and run Birdbrain.exe; no Python needed.
 The windowless browser the scanner uses (about 100 MB download) is fetched once on
 first run into %LOCALAPPDATA%\\ms-playwright; the sign-in window uses Microsoft Edge,
-which ships with Windows 10 and 11.
+which ships with Windows 10 and 11, and the app window uses Edge's WebView2 runtime.
 
 Intermediate files go to %LOCALAPPDATA%\\Birdbrain-build (kept out of OneDrive);
 only the final zip is written into this folder.
@@ -20,7 +20,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-VERSION = "1.0.1"
+VERSION = "1.0.4"
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "birdbrain"
 WORK = Path(os.environ["LOCALAPPDATA"]) / "Birdbrain-build"

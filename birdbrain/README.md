@@ -1,17 +1,23 @@
 # Birdbrain
 
-A Windows system-tray app that keeps a daily list of your assignments, tests
-and events from **Moodle** and **Outlook on the web**, using TypeSafe's
-**Jev** model to read emails and course text.
+A Windows app that keeps a daily list of your assignments, tests and events
+from **Moodle** and **Outlook on the web**, using TypeSafe's **Jev** model to read
+emails and course text. The list opens in Birdbrain's own window, and Birdbrain
+keeps scanning from the system tray while the window is closed.
 
 ## Install (packaged app)
 
-1. Unzip `Birdbrain-1.0.1-windows.zip` anywhere you like, for example
+1. Unzip `Birdbrain-1.0.4-windows.zip` anywhere you like, for example
    `%LOCALAPPDATA%\Programs\Birdbrain`.
-2. Run `Birdbrain.exe`. No Python is needed. On first run it downloads its
-   background browser once (about 100 MB), then carries on.
+2. Run `Birdbrain.exe`. No Python is needed. Its window opens with your list. On
+   first run it also downloads its background browser once (about 100 MB), then
+   carries on.
 3. Optional: to start it with Windows, press Win+R, run `shell:startup`, and put a
-   shortcut to `Birdbrain.exe` in that folder.
+   shortcut to `Birdbrain.exe --background` in that folder. It then starts in the
+   tray without opening the window.
+
+The window needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11
+and current Windows 10. Without it, the list opens in your web browser instead.
 
 Windows may show a SmartScreen warning because the app isn't code-signed. Choose
 "More info", then "Run anyway".
@@ -61,7 +67,22 @@ Each email or text chunk is judged once and then cached.
 
 ## Tray menu
 
-- **Show today's list** (or double-click the icon): three columns:
+## The app window
+
+- **Open it**: left-click the tray icon, or start `Birdbrain.exe` again (a pinned
+  taskbar icon works too). Closing the window only hides it; Birdbrain keeps
+  scanning in the tray. To stop Birdbrain completely, use **Quit Birdbrain** in
+  Settings or **Quit** in the tray icon's right-click menu.
+- The window has no Windows title bar. Its own bar is see-through, so the theme's photo
+  or colour runs to the top edge, and it frosts over once you scroll. Drag it to move the
+  window (dragging to a screen edge snaps as usual), double-click it to maximise, and use
+  its minimise, maximise and close buttons. Drag the top edge to resize. The scrollbar is
+  Birdbrain's own too: frosted glass in the Frosted glass layout, the theme's colour in Classic.
+- Links to Moodle and Outlook open in your usual web browser.
+
+## Your list
+
+- The list has three columns:
   - **Now**: overdue, today, tomorrow.
   - **This week**: the next five days, grouped by day.
   - **Later**: tests, events and assignments further out.
@@ -74,27 +95,33 @@ Each email or text chunk is judged once and then cached.
 
   Each entry shows the title, the course code (e.g. CHEM 1212) and the due time. Emails and calendar entries have **Details**, which shows the preview text.
 
-  Birdbrain serves this page itself, at a private address that only this computer can open. The address includes a key that changes each time the app starts, so always open the list from the tray icon. The page updates on its own after each scan.
+  Birdbrain serves this page itself, at a private address that only this computer can open. The address includes a key that changes each time the app starts. The page updates on its own after each scan.
 - **Tick an item off** and it moves to the **Completed** bin, above Archived, and stops counting toward overdue, today and the tray badge. Untick it there to put it back.
 - **Add item** (on the list page): your own assignment, exam, quiz or event, with a due date and optionally a time, a course and notes. It appears in the columns like everything else. Open its **Details** to **Edit** it (the same form, pre-filled) or delete it (click Delete twice).
 - **Settings** (on the list page):
   - **Layout**: Frosted glass (default) or Classic.
-  - **Theme**: Forest (default), Birdbrain, Night study, High contrast or Dusk, each in **Light**, **Dark** or **Match system** (follows Windows). In Frosted glass, each theme is a colour scheme with its own photo, a daytime one in Light and a night one in Dark.
-  - **Outlook inbox**: regular scans read your newest 50 emails. "Scan back to" reads older ones too, back to a date you pick. It stops once it's past that date, reading at most 3,000 emails.
+  - **Theme**: Forest (default), Birdbrain, Cozy, High contrast or Dusk. Each theme card has a day half and a night half (light and dark in Classic); click either to switch to that version. In Frosted glass, each theme is a colour scheme with its own photo for day and for night. Tick **Follow Windows' light and dark mode** to switch between day and night with Windows.
+  - **Scanning**: **Scan now**, **Full rescan of Moodle** (every course page, not just the timeline), and **Sign in to Moodle and Outlook** for when a notification says you need to sign in again. **Squawk when something new is due** plays a short squawk whenever a scan finds new assignments, exams or events (on by default); **Play the squawk** lets you hear it. Regular scans read your newest 50 emails; "Scan back to" reads older ones too, back to a date you pick. It stops once it's past that date, reading at most 3,000 emails.
+  - **Hidden keywords**: entries whose title or course contains a keyword move to the collapsed **Archived** section at the bottom, which also holds duplicates (for example Moodle's own reminder emails). Each keyword shows how many entries it hides; remove it and they come back.
   - **Courses**: a color and a nickname for each course tag. It warns you if a color is hard to see on the current theme or matches another course.
+  - **App**: **Open settings file** (`%APPDATA%\Birdbrain\config.json`: scan interval, how far ahead to look, `browser_channel` (`msedge`/`chrome`), `headless`, and more), **Open log**, and **Quit Birdbrain** (click twice).
 
   Everything you set on the page (layout, theme, course tags, open bins), ticked items and your own items are saved by Birdbrain, so they carry across restarts and browsers.
 
   `%APPDATA%\Birdbrain\today.html` is a read-only copy of the list, for when Birdbrain isn't running.
-- **Hide entries by keyword…**: entries whose title or course contains a keyword move to the collapsed **Archived** section at the bottom, which also holds duplicates (for example Moodle's own reminder emails). Remove a keyword and its entries come back.
-- **Refresh now** / **Full rescan of Moodle**
-- **Sign in to Moodle / Outlook…**: use this when a notification says you need to sign in again.
-- **Settings…** opens `%APPDATA%\Birdbrain\config.json`: scan interval, how far ahead to look, `browser_channel` (`msedge`/`chrome`), `headless`, and more.
+
+## Tray icon
+
+Left-click opens the window. The right-click menu has the same actions as Settings:
+**Open Birdbrain**, **Refresh now**, **Full rescan of Moodle**, **Hide entries by
+keyword…**, **Sign in to Moodle / Outlook…**, **Settings…** (the settings file),
+**Open log** and **Quit**.
 
 ## Start with Windows
 
 Press Win+R, run `shell:startup`, and add a shortcut to
-`pythonw.exe "<path>\main.py"`.
+`Birdbrain.exe --background` (or, from source, `pythonw.exe "<path>\main.py" --background`).
+Birdbrain then starts in the tray; left-click the icon to open the window.
 
 ## Notes
 
@@ -105,7 +132,8 @@ Press Win+R, run `shell:startup`, and add a shortcut to
   `assets/fonts` under the SIL Open Font License (`OFL-AtkinsonHyperlegible.txt`).
 - The Frosted glass photos are in `assets/backgrounds`: nine from Unsplash (Unsplash License) and
   the Forest daytime photo from caseyleblanc.dev (Orhan Pergel, Pexels). Photographers are credited in
-  `CREDITS.txt` there, and in `licenses\PHOTO-CREDITS.txt` in the packaged app. The glass layout's
+  `CREDITS.txt` there, and in `licenses\PHOTO-CREDITS.txt` in the packaged app. The squawk
+  (`assets/sounds/squawk.wav`) was synthesised for Birdbrain. The glass layout's
   colours are in `glass.py`.
 
 - Birdbrain was called StudyTray before. On its first start it moves your data from `%APPDATA%\StudyTray` to `%APPDATA%\Birdbrain`. If you made a Startup shortcut, point it at the new folder.

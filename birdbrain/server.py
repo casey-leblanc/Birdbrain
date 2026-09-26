@@ -37,11 +37,13 @@ TOKEN_HEADER = "X-Birdbrain-Token"
 class ListServer:
     def __init__(self, store: Store, render_page: Callable[[str], str], render_board: Callable[[str], str],
                  status: Callable[[], dict], request_mail_scan: Callable[[date], None],
-                 on_change: Callable[[], None], port: int = 0):
+                 on_change: Callable[[], None], port: int = 0,
+                 actions: dict[str, Callable[[dict], dict]] | None = None):
         self.store = store
         self.token = secrets.token_urlsafe(24)
         self.render_page, self.render_board = render_page, render_board
         self.status, self.request_mail_scan, self.on_change = status, request_mail_scan, on_change
+        self.actions = actions or {}   # the app's own actions (scan, sign in, keywords, ...) at /api/<name>
         try:  # keep the same port between runs when it's free
             self.httpd = ThreadingHTTPServer(("127.0.0.1", port), self._handler())
         except OSError:
@@ -128,6 +130,7 @@ class ListServer:
         routes = {"/api/done": srv.set_done, "/api/items": srv.add_item, "/api/items/update": srv.update_item,
                   "/api/items/delete": srv.delete_item, "/api/prefs": srv.save_prefs,
                   "/api/scan-mail": srv.scan_mail}
+        routes.update({f"/api/{name}": fn for name, fn in srv.actions.items()})
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, fmt, *args):
@@ -175,8 +178,10 @@ class ListServer:
                     return self._send(403, "<p style='font:16px system-ui;margin:2em'>Open your list from the "
                                            "Birdbrain icon in the system tray.</p>", "text/html; charset=utf-8")
                 try:
-                    if url.path == "/":
-                        return self._send(200, srv.render_page(srv.token), "text/html; charset=utf-8")
+                    if url.path == "/":   # "app=1": the page for Birdbrain's own window, with its title bar
+                        app = parse_qs(url.query).get("app", [""])[0] == "1"
+                        page = srv.render_page(srv.token, app_window=True) if app else srv.render_page(srv.token)
+                        return self._send(200, page, "text/html; charset=utf-8")
                     if url.path == "/board":
                         return self._send(200, srv.render_board(srv.token), "text/html; charset=utf-8")
                     if url.path == "/api/status":
