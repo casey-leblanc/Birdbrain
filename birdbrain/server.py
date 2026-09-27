@@ -2,6 +2,8 @@
 ticking items off, adding and editing your own items, display preferences,
 and starting an inbox scan.
 
+It also takes the photos for a Custom Glass theme (POST /api/photo, the picture itself as the body).
+
 Security: it listens on 127.0.0.1 only, and every request must carry a random
 token that changes each time Birdbrain starts (in the URL for the page, in a
 header for changes). Requests with any other Host header are refused, and
@@ -21,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
+import custom
 import glass
 import prefs
 from store import Item, Store
@@ -109,10 +112,52 @@ class ListServer:
             raise ValueError("Only items you added yourself can be deleted.")
         self.store.delete(item.id)
         self.on_change()
-        return {"ok": True}
+        # everything Undo needs to put it back as it was
+        kind = (item.level or "exam") if item.kind == "test" else item.kind
+        no_time = (item.due.hour, item.due.minute) == (23, 59)
+        return {"ok": True, "item": {"id": item.id, "title": item.title, "kind": kind, "date": item.due.date().isoformat(),
+                                     "time": "" if no_time else f"{item.due:%H:%M}", "course": item.course,
+                                     "notes": item.detail, "done": item.done_at is not None}}
+
+    def restore_item(self, body: dict) -> dict:
+        """Undo a delete: the same item back under its own id."""
+        item_id = str(body.get("id", ""))
+        if not re.fullmatch(r"manual:[0-9a-f]{12}", item_id) or self.store.exists(item_id):
+            raise ValueError("That item can't be put back.")
+        self.store.upsert(self._manual(body, item_id))
+        if body.get("done"):
+            self.store.set_done(item_id, True)
+        self.on_change()
+        return {"ok": True, "id": item_id}
+
+    def place(self, body: dict) -> dict:
+        """Archive one item, show one the rules archived, or hand it back to the rules; says what it was before."""
+        item_id, how = str(body.get("id", "")), body.get("how") or None
+        if not self.store.exists(item_id):
+            raise ValueError("No such item")
+        if how not in (*Store.PLACES, None):
+            raise ValueError("Unknown place.")
+        was = self.store.set_placement(item_id, how)
+        self.on_change()
+        return {"ok": True, "was": was}
+
+    def _photo_url(self, name: str) -> str:
+        return f"/bg/{name}.jpg?token={self.token}"
+
+    def _custom(self, p: dict) -> dict:
+        """What the page needs to show the Custom theme after a change: its CSS, thumbnails and warnings."""
+        return {"ok": True, "prefs": p, "css": custom.css(p, self._photo_url), "thumbs": custom.thumbs(p, self._photo_url),
+                "warnings": custom.focus_warnings(p)}
 
     def save_prefs(self, body: dict) -> dict:
-        return {"ok": True, "prefs": prefs.update(self.store, body)}
+        return self._custom(prefs.update(self.store, body))
+
+    def upload_photo(self, slot: str, data: bytes) -> dict:
+        p = custom.save_photo(self.store, slot, data)
+        return {**self._custom(p), "alpha": p["glass_custom"][slot]["alpha"]}
+
+    def remove_photo(self, body: dict) -> dict:
+        return self._custom(custom.remove_photo(self.store, str(body.get("slot", ""))))
 
     def scan_mail(self, body: dict) -> dict:
         try:
@@ -128,8 +173,9 @@ class ListServer:
     def _handler(self):
         srv = self
         routes = {"/api/done": srv.set_done, "/api/items": srv.add_item, "/api/items/update": srv.update_item,
-                  "/api/items/delete": srv.delete_item, "/api/prefs": srv.save_prefs,
-                  "/api/scan-mail": srv.scan_mail}
+                  "/api/items/delete": srv.delete_item, "/api/items/restore": srv.restore_item,
+                  "/api/place": srv.place, "/api/prefs": srv.save_prefs,
+                  "/api/scan-mail": srv.scan_mail, "/api/photo-remove": srv.remove_photo}
         routes.update({f"/api/{name}": fn for name, fn in srv.actions.items()})
 
         class Handler(BaseHTTPRequestHandler):
@@ -149,9 +195,11 @@ class ListServer:
                 self.wfile.write(data)
 
             def _photo(self, name: str) -> None:
-                """A background photo for the glass layout (assets/backgrounds)."""
-                path = glass.BG_DIR / f"{name}.jpg"
-                if not re.fullmatch(r"[a-z]+-(light|dark)(-thumb)?", name) or not path.is_file():
+                """A background photo for the glass layout (assets/backgrounds, or the student's own)."""
+                if not re.fullmatch(r"[a-z]+-(light|dark)(-thumb)?", name):
+                    return self._send(404, "Not found", "text/plain")
+                path = glass.photo_path(name)
+                if not path.is_file():
                     return self._send(404, "Not found", "text/plain")
                 data = path.read_bytes()
                 self.send_response(200)
@@ -193,10 +241,29 @@ class ListServer:
                     return self._send(500, "Birdbrain couldn't build the page; see the log.", "text/plain")
                 self._send(404, "Not found", "text/plain")
 
+            def _upload(self, url) -> None:
+                """A Custom Glass photo: the picture itself is the body (up to 25 MB)."""
+                if not self.headers.get("Content-Type", "").startswith("image/"):
+                    return self._json(415, {"error": "Choose a picture (JPEG, PNG or WebP)."})
+                length = int(self.headers.get("Content-Length", 0))
+                if length > custom.MAX_UPLOAD:
+                    return self._json(413, {"error": "That picture is over 25 MB. Choose a smaller one."})
+                try:
+                    slot = parse_qs(url.query).get("slot", [""])[0]
+                    return self._json(200, srv.upload_photo(slot, self.rfile.read(length)))
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                except Exception:
+                    log.exception("photo upload failed")
+                    return self._json(500, {"error": "Birdbrain couldn't use that picture; see the log."})
+
             def do_POST(self):
-                action = routes.get(urlparse(self.path).path)
+                url = urlparse(self.path)
+                action = routes.get(url.path)
                 if not self._host_ok() or not self._token_ok(self.headers.get(TOKEN_HEADER)):
                     return self._json(403, {"error": "Forbidden"})
+                if url.path == "/api/photo":
+                    return self._upload(url)
                 if not action or not self.headers.get("Content-Type", "").startswith("application/json"):
                     return self._json(404, {"error": "Not found"})
                 try:

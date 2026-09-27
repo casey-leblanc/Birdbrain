@@ -49,7 +49,7 @@ def run(out: Path) -> int:
 
     def page_served():
         html = urllib.request.urlopen(srv.url).read().decode()
-        assert "Birdbrain" in html and "Birdbrain Mono" in html, "page content missing"
+        assert "Birdbrain" in html and "Birdbrain Sans" in html, "page content missing"
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/")
             raise AssertionError("page served without the token")
@@ -60,13 +60,31 @@ def run(out: Path) -> int:
 
     def photos():
         import glass
-        names = [glass.photo_name(t, m) for t in theme.THEMES for m in ("light", "dark")]
+        names = [glass.photo_name(t, m) for t in glass.SCHEMES for m in ("light", "dark")]
         missing = [n for n in names if not (glass.BG_DIR / f"{n}.jpg").exists()]
         assert not missing, f"missing: {missing}"
         r = urllib.request.urlopen(f"http://127.0.0.1:{srv.port}/bg/{names[0]}.jpg?token={srv.token}")
         assert r.headers.get("Content-Type") == "image/jpeg" and len(r.read()) > 10_000
         return f"{len(names)} background photos bundled and served"
     check("glass layout photos", photos)
+
+    def focus_contrast():
+        import custom
+        themes = {**theme.THEMES, "custom": dict(modes={m: custom.focus_tokens(k) for m, k in custom.focus_default().items()})}
+        low = []
+        for k, th in themes.items():
+            for m, t in th["modes"].items():
+                h = theme.heat(t, theme.SOFTEN.get(k, .2))
+                pairs = [(t[role], t[surf], 4.5, f"{role} on {surf}") for role in ("text", "struct", "muted", "accent")
+                         for surf in ("bg", "col")]
+                pairs += [(t["accent_ink"], t["accent"], 4.5, "overdue chip"), (t["bg"], t["struct"], 4.5, "exam chip"),
+                          (h["h_today_ink"], h["h_today"], 4.5, "today chip"),
+                          (h["h_tomorrow_ink"], h["h_tomorrow"], 4.5, "tomorrow chip"),
+                          (h["edge"], t["col"], 3, "field edge"), (h["edge"], t["bg"], 3, "field edge")]
+                low += [f"{k} {m} {what}" for a, b, need, what in pairs if theme.ratio(a, b) < need]
+        assert not low, f"too low: {low}"
+        return f"{len(theme.THEMES)} Focus themes and Custom: text 4.5:1, heat and exam chips 4.5:1, field edges 3:1"
+    check("focus themes readable", focus_contrast)
 
     def scanner_browser():
         with open_context(s) as ctx:
@@ -82,9 +100,13 @@ def run(out: Path) -> int:
     def sound():
         import wave
         import main
-        with wave.open(str(main.SQUAWK)) as w:
-            return f"squawk bundled, {w.getnframes() / w.getframerate():.2f} s"
-    check("new-item squawk", sound)
+        lengths = []
+        for path in (main.SQUAWK, main.CHIRP):
+            with wave.open(str(path)) as w:
+                lengths.append(f"{path.stem} {w.getnframes() / w.getframerate():.2f} s")
+        return "bundled: " + ", ".join(lengths)
+    check("new-item squawk and day-clear chirp", sound)
+    check("first-run welcome page", lambda: "setup-form" in report.render_setup("x", prefs.DEFAULTS) and "built")
 
     def icon():
         import main

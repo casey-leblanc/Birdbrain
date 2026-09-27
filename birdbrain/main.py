@@ -34,7 +34,8 @@ import prefs
 import report
 import theme
 from browser import NeedsLogin, interactive_login, open_context
-from config import CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, migrate_old_data
+from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
+                    migrate_old_data)
 from jev import Jev
 from keyword_dialog import edit_keywords
 from moodle import Moodle
@@ -45,15 +46,16 @@ from store import Store
 
 log = logging.getLogger("birdbrain")
 SQUAWK = Path(__file__).parent / "assets" / "sounds" / "squawk.wav"
+CHIRP = Path(__file__).parent / "assets" / "sounds" / "chirp.wav"
 
 
-def squawk() -> None:
-    """The little squawk for something new that's due (Settings can turn it off)."""
+def squawk(sound: Path = SQUAWK) -> None:
+    """The little squawk for something new that's due, or the chirp when today's list is done (Settings can turn both off)."""
     try:
         import winsound
-        winsound.PlaySound(str(SQUAWK), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+        winsound.PlaySound(str(sound), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
     except Exception:
-        log.exception("Couldn't play the squawk")
+        log.exception("Couldn't play %s", sound.name)
 SHOW_EVENT = "Local\\BirdbrainShowWindow"   # a second launch sets this to bring the window up
 
 
@@ -89,8 +91,13 @@ class App:
         self.dialog_open = threading.Lock()   # one keyword window at a time
         self.scanning = False
         self.mail_since: date | None = None   # inbox scan requested from the list page
+        self.inbox_scanning = False
+        self.stop_mail = threading.Event()     # "Stop" on that scan: what it has already added stays
         self.server: ListServer | None = None
         self.window: appwindow.AppWindow | None = None
+        self.set_up = threading.Event()        # the Moodle (and Outlook) addresses are known
+        if self.settings.moodle_url:
+            self.set_up.set()
         # Left-click runs the default item: open the app window.
         self.icon = pystray.Icon("Birdbrain", make_icon(), "Birdbrain", menu=pystray.Menu(
             pystray.MenuItem("Open Birdbrain", self.on_show, default=True),
@@ -119,15 +126,19 @@ class App:
         now = datetime.now()
         b = report.build(self.store, self.settings, now)
         saved = prefs.load(self.store)
+        if not self.set_up.is_set() and not board:   # first run: ask for the addresses
+            return report.render_setup(token, saved, app_window, self.settings.outlook_url)
         if board:
             return report.render_board(b, self.settings, self.status, now, self.store.version, saved)
         return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window)
 
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
-                "scanning": self.scanning or self.mail_since is not None}
+                "scanning": self.scanning or self.mail_since is not None,
+                "inbox": self.inbox_scanning or self.mail_since is not None}
 
     def request_mail_scan(self, since: date) -> None:
+        self.stop_mail.clear()
         self.mail_since = since
         self._set_status(f"Inbox scan back to {since:%b} {since.day} is queued…")
         self.wake.set()
@@ -159,17 +170,56 @@ class App:
 
     # --- the tray menu's actions, for the Settings sheet on the list page -------------
     def _page_actions(self) -> dict:
-        return {"scan": self.api_scan, "sign-in": self.api_sign_in, "keywords": self.api_keywords,
-                "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound}
+        return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "keywords": self.api_keywords,
+                "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
+                "setup": self.api_setup}
+
+    def api_setup(self, body: dict) -> dict:
+        """The welcome page. With "check", just tidy and check the addresses (step 1); otherwise save them and
+        the chosen look (step 2), and sign-in and scanning can start."""
+        s = Settings.load()
+        moodle = clean_moodle_url(str(body.get("moodle", "")))
+        outlook = None if body.get("no_outlook") else clean_outlook_url(str(body.get("outlook", "")))
+        if body.get("check"):
+            return {"ok": True, "moodle": moodle, "outlook": outlook}
+        s.moodle_url = moodle
+        if outlook is None:
+            s.scan_outlook_mail = s.scan_outlook_calendar = False
+        else:
+            s.outlook_url = outlook
+            s.scan_outlook_mail = s.scan_outlook_calendar = True
+        s.save()
+        look = {k: body[k] for k in ("layout", "theme", "focus_theme", "mode") if k in body}
+        if look:
+            prefs.update(self.store, look)
+        self.settings = s
+        log.info("Set up: Moodle %s, Outlook %s", s.moodle_url, "off" if body.get("no_outlook") else s.outlook_url)
+        self.set_up.set()
+        return {"ok": True, "moodle": s.moodle_url}
 
     def api_sound(self, body: dict) -> dict:
         squawk()   # "Play the squawk" in Settings
+        return {"ok": True}
+
+    def api_chirp(self, body: dict) -> dict:
+        """The page asks for this when you tick off the last thing due today; it stays quiet if sounds are off."""
+        if prefs.load(self.store).get("sound", True):
+            squawk(CHIRP)
         return {"ok": True}
 
     def api_scan(self, body: dict) -> dict:
         if body.get("full"):
             self.force_full = True
         self.wake.set()
+        return {"ok": True}
+
+    def api_scan_stop(self, body: dict) -> dict:
+        """Stop the older-emails scan: a queued one never starts; a running one ends where it is, and what it has
+        already added stays (emails it hadn't got to are read next time)."""
+        if self.mail_since is not None and not self.inbox_scanning:
+            self.mail_since = None
+            self._set_status("Inbox scan cancelled.")
+        self.stop_mail.set()
         return {"ok": True}
 
     def api_sign_in(self, body: dict) -> dict:
@@ -259,21 +309,33 @@ class App:
         label = f"{since:%b} {since.day}"
         self._set_status(f"Scanning inbox back to {label}…")
         new, problem = [], ""
+
+        def progress(n: int) -> None:
+            self._set_status(f"Scanning inbox back to {label}… {n} emails read")
+        self.inbox_scanning = True
         try:
             with self.lock, open_context(self.settings) as ctx:
                 new = Outlook(self.settings, self.store, self.jev).scan_mail_since(
-                    ctx, since, progress=lambda n: self._set_status(f"Scanning inbox back to {label}… {n} emails read"))
+                    ctx, since, progress=progress, stop=self.stop_mail.is_set)
         except NeedsLogin as e:
             log.warning("%s", e)
             problem = "Outlook needs sign-in"
         except Exception:
             log.exception("Inbox scan failed")
             problem = "Inbox scan failed (see log)"
+        finally:
+            self.inbox_scanning = False
         new, _ = filters.split(new, self.settings.hidden_keywords,
                                pool=report.window(self.store, self.settings, datetime.now()))
         updated = datetime.now().strftime("%I:%M %p").lstrip("0")
-        self.status = (f"Inbox scanned back to {label} at {updated}: "
-                       f"{len(new)} new item{'' if len(new) == 1 else 's'}") if not problem else problem
+        found = f"{len(new)} new item{'' if len(new) == 1 else 's'}"
+        if problem:
+            self.status = problem
+        elif self.stop_mail.is_set():
+            self.status = f"Inbox scan stopped at {updated}: {found}"
+        else:
+            self.status = f"Inbox scanned back to {label} at {updated}: {found}"
+        self.stop_mail.clear()
         self._refresh_view()
         if problem and "sign-in" in problem:
             self.notify("Choose 'Sign in to Moodle / Outlook…' from the tray menu.", problem)
@@ -306,9 +368,10 @@ class App:
                     log.exception("Outlook scan failed")
                     problems.append("Outlook scan failed (see log)")
 
-        jev = "Read by Jev" if self.jev.online else "Keyword matching (no TypeSafe key)"
+        # Keyword matching is the normal case, so only say when Jev did the reading.
+        jev = " Read by Jev." if self.jev.online else ""
         updated = datetime.now().strftime("%I:%M %p").lstrip("0")
-        self.status = f"Updated {updated}. {jev}." + (f" {'; '.join(problems)}." if problems else "")
+        self.status = f"Updated {updated}.{jev}" + (f" {'; '.join(problems)}." if problems else "")
         self.problems = problems
         due_today = self._refresh_view()
 
@@ -319,6 +382,8 @@ class App:
         # Don't announce duplicates or keyword-hidden entries.
         new, _ = filters.split(new, self.settings.hidden_keywords,
                                pool=report.window(self.store, self.settings, datetime.now()))
+        # Nor anything already over: a meeting or exam that has happened isn't news (overdue work still is).
+        new = [i for i in new if i.kind == "assignment" or i.due >= datetime.now()]
         if new:
             soon = sorted(new, key=lambda i: i.due)[:3]
             lines = "\n".join(f"{i.title[:50]} ({i.due:%a %b %d})" for i in soon)
@@ -345,6 +410,11 @@ class App:
         self.icon.title = f"Birdbrain: {s}"[:127]
 
     def loop(self):
+        if not self.set_up.is_set():
+            self._set_status("Waiting for your Moodle and Outlook addresses")
+            while not self.set_up.wait(1):
+                if self.stop.is_set():
+                    return
         if self.store.get_meta("login_done") != "1" or not STATE_PATH.exists():
             self.notify("Sign in to Moodle and Outlook in the window that opens. "
                         "It closes by itself once you're signed in.")
@@ -353,7 +423,9 @@ class App:
             self.store.set_meta("login_done", "1")
         while not self.stop.is_set():
             self.scanning = True
-            since, self.mail_since = self.mail_since, None
+            since = self.mail_since
+            self.inbox_scanning = since is not None   # before the queue empties, so the page never sees a gap
+            self.mail_since = None
             try:
                 self.scan_inbox(since) if since else self.scan()
             except Exception:
@@ -368,6 +440,14 @@ class App:
     def run(self, show: bool = True) -> None:
         """The app window owns the main thread; the tray icon, scans and the list server run beside it."""
         self._start_server()
+        if not self.set_up.is_set():
+            if self.server:
+                show = True   # the welcome page needs you, even when started with --background
+            else:             # no list server: fall back to plain dialogs
+                first_run_setup()
+                self.settings = Settings.load()
+                if self.settings.moodle_url:
+                    self.set_up.set()
         self._listen_for_show()
         threading.Thread(target=self.loop, daemon=True, name="scans").start()
         threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
@@ -431,6 +511,7 @@ def show_running_copy() -> bool:
 
 
 def first_run_setup() -> None:
+    """Plain dialogs for the addresses; only used if the list server can't start (the welcome page needs it)."""
     s = Settings.load()
     if s.moodle_url:
         return
@@ -443,10 +524,13 @@ def first_run_setup() -> None:
         "Birdbrain setup", "Outlook address (school accounts: https://outlook.office.com,\n"
         "personal: https://outlook.live.com):", initialvalue=s.outlook_url)
     root.destroy()
-    if url:
-        s.moodle_url = url.strip().rstrip("/")
-    if outlook:
-        s.outlook_url = outlook.strip().rstrip("/")
+    try:
+        if url:
+            s.moodle_url = clean_moodle_url(url)
+        if outlook:
+            s.outlook_url = clean_outlook_url(outlook)
+    except ValueError:
+        pass
     s.save()
 
 
@@ -477,7 +561,6 @@ if __name__ == "__main__":
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if moved:
         log.info("%s", moved)
-    first_run_setup()
     app = App()
     import browser
     browser.on_browser_install = lambda: app.notify(

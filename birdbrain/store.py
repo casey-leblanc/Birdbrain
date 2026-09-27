@@ -5,7 +5,7 @@ import hashlib
 import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config import DB_PATH
 
@@ -52,6 +52,8 @@ class Store:
             );
             CREATE TABLE IF NOT EXISTS judged (hash TEXT PRIMARY KEY, item_id TEXT);
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+            -- the student's own call on one item, which beats the automatic rules: "archived" or "shown"
+            CREATE TABLE IF NOT EXISTS placement (id TEXT PRIMARY KEY, how TEXT);
             """
         )
         have = {r[1] for r in self._db.execute("PRAGMA table_info(items)")}
@@ -131,19 +133,47 @@ class Store:
     def delete(self, item_id: str) -> None:
         with self._lock, self._db:
             self._db.execute("DELETE FROM items WHERE id=?", (item_id,))
+            self._db.execute("DELETE FROM placement WHERE id=?", (item_id,))
         self._changed()
 
-    def remove_missing(self, source_prefix: str, keep_ids: set[str]) -> None:
+    # --- placement: archive one item, or show one the rules would archive ----------
+    PLACES = ("archived", "shown")
+
+    def placements(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._db.execute("SELECT id, how FROM placement").fetchall())
+
+    def set_placement(self, item_id: str, how: str | None) -> str | None:
+        """Archive an item ("archived"), show it despite a keyword or duplicate ("shown"), or leave it to the rules
+        (None). Returns what it was before, so the change can be undone."""
+        if how not in (*self.PLACES, None):
+            raise ValueError(f"unknown placement {how!r}")
+        with self._lock, self._db:
+            row = self._db.execute("SELECT how FROM placement WHERE id=?", (item_id,)).fetchone()
+            if how:
+                self._db.execute("INSERT OR REPLACE INTO placement VALUES (?,?)", (item_id, how))
+            else:
+                self._db.execute("DELETE FROM placement WHERE id=?", (item_id,))
+        self._changed()
+        return row[0] if row else None
+
+    def remove_missing(self, source_prefix: str, keep_ids: set[str], grace: timedelta | None = None) -> int:
         """Drop items from a structured source that no longer report them
-        (e.g. a Moodle assignment that was submitted)."""
+        (e.g. a Moodle assignment that was submitted). With `grace`, only items not seen for at least that
+        long go, so one scan that missed them (a page that hadn't finished drawing) can't delete them, and
+        they can't come back on the next scan looking new. Returns how many went."""
+        cutoff = (datetime.now() - grace).isoformat(timespec="seconds") if grace else None
+        gone = 0
         with self._lock, self._db:
             rows = self._db.execute(
-                "SELECT id FROM items WHERE id LIKE ?", (source_prefix + "%",)
+                "SELECT id, last_seen FROM items WHERE id LIKE ?", (source_prefix + "%",)
             ).fetchall()
-            for (item_id,) in rows:
-                if item_id not in keep_ids:
+            for item_id, last_seen in rows:
+                if item_id not in keep_ids and (cutoff is None or (last_seen or "") < cutoff):
                     self._db.execute("DELETE FROM items WHERE id=?", (item_id,))
+                    gone += 1
         self._changed()
+        return gone
 
     def items_between(self, start: datetime, end: datetime) -> list[Item]:
         with self._lock:

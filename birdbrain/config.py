@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 APP_NAME = "Birdbrain"
 DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
@@ -61,6 +63,39 @@ def migrate_old_data() -> str:
         if (DATA_DIR / old).exists() and not (DATA_DIR / new).exists():
             (DATA_DIR / old).rename(DATA_DIR / new)
     return how
+
+
+# Where a Moodle site's own pages start; anything from here on is a page, not the site's address.
+_MOODLE_PAGES = re.compile(r"/(my|course|login|mod|user|calendar|grade|admin|message|blocks|local|auth|report|"
+                           r"pluginfile\.php|index\.php)(/|\?|$)", re.I)
+
+
+def _web_address(text: str, what: str):
+    text = (text or "").strip()
+    if not text:
+        raise ValueError(f"Enter your {what} address.")
+    if not re.match(r"https?://", text, re.I):
+        text = "https://" + text
+    u = urlparse(text)
+    if not u.netloc or "." not in u.netloc or " " in text:
+        raise ValueError(f"That doesn't look like a web address. Copy your {what} address from your browser's address bar.")
+    return u
+
+
+def clean_moodle_url(text: str) -> str:
+    """Any Moodle page's address -> the site's address: 'moodle.lsu.edu/my/' -> 'https://moodle.lsu.edu'.
+    Sites in a folder keep it: 'https://school.edu/moodle/course/view.php?id=4' -> 'https://school.edu/moodle'."""
+    u = _web_address(text, "Moodle")
+    path = u.path
+    if m := _MOODLE_PAGES.search(path):
+        path = path[:m.start()]
+    return f"{u.scheme.lower()}://{u.netloc.lower()}{path}".rstrip("/")
+
+
+def clean_outlook_url(text: str) -> str:
+    """Any Outlook on the web address -> the site: 'outlook.office.com/mail/inbox' -> 'https://outlook.office.com'."""
+    u = _web_address(text, "Outlook")
+    return f"https://{u.netloc.lower()}"
 
 
 @dataclass

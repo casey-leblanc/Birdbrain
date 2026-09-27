@@ -9,7 +9,8 @@ Two things get moved out of the list into its "Archived" section:
   "Due on Saturday: ..." reminder emails, or the course-page text next to a
   quiz that the quiz itself already covers.
 
-Nothing is deleted; removing a keyword brings its items straight back.
+Nothing is deleted; removing a keyword brings its items straight back. The student's own call on one item beats
+both rules: they can archive any item themselves, or show one the rules would archive.
 """
 from __future__ import annotations
 
@@ -94,15 +95,22 @@ def keyword_hit(item: Item, keywords: list[str]) -> str | None:
     return next((k for k in keywords if k.strip() and k.strip().lower() in hay), None)
 
 
-def split(items: list[Item], keywords: list[str], pool: list[Item] | None = None
-          ) -> tuple[list[Item], list[Hidden]]:
+def split(items: list[Item], keywords: list[str], pool: list[Item] | None = None,
+          placement: dict[str, str] | None = None) -> tuple[list[Item], list[Hidden]]:
     """Return (shown, archived). Duplicates are judged against `pool`
-    (defaults to `items`), so a new email can be checked against everything stored."""
+    (defaults to `items`), so a new email can be checked against everything stored. `placement` is the student's
+    own call per item id ("archived" or "shown"), which comes first."""
     structured = [i for i in (pool if pool is not None else items) if i.id.startswith(STRUCTURED)]
+    placement = placement or {}
     shown, hidden = [], []
     for i in items:
-        if k := keyword_hit(i, keywords):
-            hidden.append(Hidden(i, f'keyword "{k}"'))
+        how = placement.get(i.id)
+        if how == "archived":
+            hidden.append(Hidden(i, "you archived it"))
+        elif how == "shown":
+            shown.append(i)
+        elif k := keyword_hit(i, keywords):
+            hidden.append(Hidden(i, f"keyword “{k}”"))
         elif d := duplicate_of(i, structured):
             hidden.append(Hidden(i, f"duplicate of “{html.unescape(d.title)}” ({d.due:%b %d})"))
         else:

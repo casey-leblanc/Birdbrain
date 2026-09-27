@@ -47,6 +47,20 @@ _WEEKDAY_DATE = re.compile(
 _TIME = re.compile(r"\b(\d{1,2}:\d{2}\s*[AP]M)\b", re.I)
 
 
+def _settled_labels(page: Page) -> list[str]:
+    """A week's event labels once Outlook has drawn them. Events render after the grid, later still on a cold
+    start, so after 2.5s keep reading once a second (up to 4s more) until a non-empty read repeats."""
+    page.wait_for_timeout(2500)
+    labels = page.evaluate(_CAL_JS)
+    for _ in range(4):
+        page.wait_for_timeout(1000)
+        again = page.evaluate(_CAL_JS)
+        if labels and again == labels:
+            break
+        labels = again
+    return labels
+
+
 class Outlook:
     def __init__(self, settings: Settings, store: Store, jev: Jev):
         self.s = settings
@@ -80,12 +94,12 @@ class Outlook:
         return new
 
     # --- mail -----------------------------------------------------------------
-    def scan_mail_since(self, ctx: BrowserContext, since: date, progress=None) -> list[Item]:
+    def scan_mail_since(self, ctx: BrowserContext, since: date, progress=None, stop=None) -> list[Item]:
         """One-off deeper scan: read the inbox back to `since` instead of just
-        the newest `email_scan_count` messages."""
-        return self._scan_mail(ctx, since=since, progress=progress)
+        the newest `email_scan_count` messages. `stop()` turning true ends it early; items already added stay."""
+        return self._scan_mail(ctx, since=since, progress=progress, stop=stop)
 
-    def _scan_mail(self, ctx: BrowserContext, since: date | None = None, progress=None) -> list[Item]:
+    def _scan_mail(self, ctx: BrowserContext, since: date | None = None, progress=None, stop=None) -> list[Item]:
         page = self._open(ctx, "/mail/inbox", '[role="listbox"] [role="option"]')
         today = date.today()
         # The list is virtualised (only rows near the viewport exist), so collect
@@ -95,6 +109,8 @@ class Outlook:
         older_streak, stale_rounds = 0, 0
         max_rows = MAX_DEEP_SCAN if since else self.s.email_scan_count
         for _ in range(MAX_DEEP_SCAN // 5 if since else 10):
+            if stop and stop():
+                break
             before = len(rows)
             for r in page.evaluate(_MAIL_JS, max_rows):
                 key = r["id"] or text_hash(r["text"])
@@ -115,6 +131,8 @@ class Outlook:
 
         new = []
         for key, r in list(rows.items())[:max_rows]:
+            if stop and stop():
+                break   # the rest wait for next time: none of them is marked judged
             text = r["text"] or r["label"]
             if since and _received_date(text, today) < since:
                 continue
@@ -146,8 +164,7 @@ class Outlook:
             d = start + timedelta(weeks=w)
             try:
                 page = self._open(ctx, f"/calendar/view/week/{d.year}/{d.month}/{d.day}", '[role="main"]')
-                page.wait_for_timeout(2500)  # events render after the grid
-                labels = page.evaluate(_CAL_JS)
+                labels = _settled_labels(page)
                 page.close()
             except NeedsLogin:
                 raise
@@ -161,7 +178,12 @@ class Outlook:
                 keep.add(item.id)
                 if self.store.upsert(item):
                     new.append(item)
-        self.store.remove_missing("outlook:cal:", keep)
+        # A week can read as empty when Outlook hasn't finished drawing it, so an event has to be missing for a
+        # few scans in a row before it goes (a cancelled meeting lingers a few hours). Deleting on one miss wiped
+        # the calendar, and the next scan then announced every event, past ones included, as new.
+        grace = timedelta(minutes=max(180, 3 * self.s.interval_minutes))
+        gone = self.store.remove_missing("outlook:cal:", keep, grace=grace)
+        log.info("Calendar: %d events in %d weeks, %d new, %d removed", len(keep), weeks, len(new), gone)
         return new
 
     def _calendar_item(self, label: str) -> Item | None:
