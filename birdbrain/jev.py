@@ -147,6 +147,8 @@ class Jev:
         today = today or date.today()
         anchor = sent or today
         text = text.strip()[:4000]
+        if is_receipt(text):   # work already handed in or marked: never a new deadline (and no need to ask Jev)
+            return Judgment(actionable=0.0, kind="none", due=None, confidence=None, needs_review=False, note="receipt")
         if not self._client:
             return _keyword_judge(text, anchor)
         try:
@@ -206,6 +208,20 @@ class Jev:
     @staticmethod
     def is_actionable(j: Judgment) -> bool:
         return j.actionable >= ACTIONABLE_MIN and j.kind != "none"
+
+
+# Receipts and notices about work already done: a submission confirmation, a grade released. They aren't something
+# due, whatever dates they mention (Gradescope's "Successfully submitted to HW3", "Your submission has been graded").
+RECEIPT_RE = re.compile(
+    r"\b(successfully submitted|submission (?:received|confirmation|receipt|successful|complete)"
+    r"|(?:you|you've|you have|has been|have been|was) (?:successfully )?submitted"
+    r"|thank you for (?:your )?submi|we(?:'ve| have) received your"
+    r"|(?:grades?|feedback|scores?|results?) (?:is |are |has been |have been )?(?:released|posted|now available)"
+    r"|(?:was|has been|have been) graded)", re.I)
+
+
+def is_receipt(text: str) -> bool:
+    return bool(RECEIPT_RE.search(text))
 
 
 # --- keyword fallback (no API key) -------------------------------------------

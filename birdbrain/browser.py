@@ -219,26 +219,169 @@ def interactive_login(settings: Settings) -> None:
                 with contextlib.suppress(Exception):
                     complete_sign_in(outlook_page, lambda u: not on_ms_login(u), timeout_s=20)
 
+        # the other course sites the student uses, each in its own tab
+        site_pages = []
+        if settings.scan_gradescope:
+            p = ctx.new_page()
+            p.goto(settings.gradescope_url.rstrip("/") + "/login", wait_until="domcontentloaded")
+            site_pages.append((p, _signed_in_gradescope))
+        connect = None
+        if settings.scan_mcgraw and settings.mcgraw_via == "moodle" and base:
+            # Connect through Moodle: the student's course, a note saying what to do, and a watch for Connect opening
+            connect = ConnectWatch(ctx, base)
+            p = ctx.new_page()
+            p.add_init_script(_note_js(urlparse(base).netloc))
+            p.goto(settings.mcgraw_course or base + "/my/courses.php", wait_until="domcontentloaded")
+            site_pages.append((p, lambda _p: connect.done()))
+        elif settings.scan_mcgraw:
+            p = ctx.new_page()
+            p.goto(settings.mcgraw_url.rstrip("/"), wait_until="domcontentloaded")
+            site_pages.append((p, _signed_in_mcgraw))
+
         host = urlparse(base).netloc
         while ctx.pages:
             with contextlib.suppress(Exception):
                 save_state_quietly(ctx)
             moodle_ok = moodle_page is None or moodle_page.is_closed() or _signed_in_moodle(moodle_page, host)
             outlook_ok = outlook_page is None or outlook_page.is_closed() or _signed_in_outlook(outlook_page)
-            if moodle_ok and outlook_ok:
+            sites_ok = all(p.is_closed() or ok(p) for p, ok in site_pages)
+            if moodle_ok and outlook_ok and sites_ok:
                 log.info("Signed in to everything; closing the sign-in window")
                 break
+            if connect:
+                connect.look(ctx)
             time.sleep(2)
         with contextlib.suppress(Exception):
             save_state_quietly(ctx)
+        if connect and connect.link:
+            connect.remember()
         with contextlib.suppress(Exception):
             ctx.close()
+
+
+# --- McGraw Hill Connect through Moodle ------------------------------------------------------------------------
+class ConnectWatch:
+    """Watches a sign-in window while the student clicks a McGraw Hill link in their Moodle course: which Moodle link
+    it was (an external-tool activity, mod/lti), the course page it was on, and when Connect opened from it. Moodle
+    hands the browser to McGraw Hill itself (an LTI launch), so Connect's own sign-in page is never needed."""
+
+    def __init__(self, ctx: BrowserContext, moodle_base: str):
+        self.base = moodle_base.rstrip("/")
+        self.link = self.course = self.name = ""
+        self.sections: list[str] = []   # Connect class pages it opened on (each lists every assignment)
+        self.opened_at = 0.0
+        self.told = False
+        ctx.on("request", self._request)
+
+    def _request(self, req) -> None:
+        url = req.url
+        if url.startswith(self.base):
+            if m := re.search(r"/mod/lti/(?:view|launch)\.php\?id=(\d+)", url):
+                self.link = f"{self.base}/mod/lti/launch.php?id={m.group(1)}"
+            elif m := re.search(r"/course/view\.php\?id=(\d+)", url):
+                self.course = f"{self.base}/course/view.php?id={m.group(1)}"
+        elif urlparse(url).netloc.endswith("mheducation.com") and not re.search(r"login|signin|sign-in", url, re.I):
+            if req.is_navigation_request() and not self.opened_at:
+                self.opened_at = time.time()
+                log.info("McGraw Hill Connect opened from Moodle")
+            if (m := re.match(r"https://[^/]*mheducation\.com/student/class/section/\d+", url)) and m.group(0) not in self.sections:
+                self.sections.append(m.group(0))
+
+    def look(self, ctx: BrowserContext) -> None:
+        """The activity's name, from the Moodle tab it was opened on (Moodle titles pages "Course: Activity"); and once
+        Connect is in, say so on the Moodle pages, since the window may still be waiting on another site."""
+        for p in ctx.pages:
+            with contextlib.suppress(Exception):
+                if "/mod/lti/" in p.url and p.url.startswith(self.base):
+                    self.name = re.sub(r"\s*\|.*$", "", p.title()).split(": ", 1)[-1].strip()[:120]
+        if self.done() and not self.told:
+            for p in ctx.pages:
+                with contextlib.suppress(Exception):
+                    if p.url.startswith(self.base):
+                        p.evaluate("""() => { const d = document.getElementById('birdbrain-note');
+                          if (d) d.textContent = 'Birdbrain: McGraw Hill Connect is signed in. This window closes by itself once every site is.'; }""")
+            self.told = True
+
+    def done(self) -> bool:
+        return bool(self.opened_at) and time.time() - self.opened_at > 4   # a moment for Connect to set its sign-in
+
+    def remember(self) -> None:
+        s = Settings.load()
+        s.mcgraw_launch, s.mcgraw_course = self.link, self.course or s.mcgraw_course
+        s.mcgraw_launch_name = self.name or s.mcgraw_launch_name
+        s.mcgraw_sections = (self.sections + [u for u in s.mcgraw_sections if u not in self.sections])[:6]
+        s.save()
+        log.info("McGraw Hill Connect is reached through Moodle link %s (%s)", self.link, s.mcgraw_launch_name or "unnamed")
+
+
+def _note_js(moodle_host: str) -> str:
+    """A note on the Moodle pages of the sign-in window saying what to click."""
+    return """(() => { if (location.host !== %s) return;
+  const show = () => { if (document.getElementById('birdbrain-note')) return;
+    const d = document.createElement('div'); d.id = 'birdbrain-note'; d.setAttribute('role', 'status');
+    d.textContent = 'Birdbrain: open the course that uses McGraw Hill Connect and click any McGraw Hill link in it once. ' +
+      'This window closes by itself when Connect opens.';
+    d.style.cssText = 'position:fixed;z-index:2147483647;left:50%%;bottom:16px;transform:translateX(-50%%);max-width:min(640px,calc(100vw - 32px));' +
+      'padding:12px 18px;border-radius:10px;background:#1C2230;color:#fff;font:600 15px/1.45 "Segoe UI",system-ui,sans-serif;' +
+      'box-shadow:0 8px 24px -8px rgba(0,0,0,.45)';
+    document.body.appendChild(d); };
+  if (document.body) show(); else addEventListener('DOMContentLoaded', show); })()""" % json.dumps(moodle_host)
+
+
+def relaunch_connect(ctx: BrowserContext, settings: Settings) -> bool:
+    """Re-open the McGraw Hill link the student last clicked in Moodle, in the background, so Moodle signs this browser
+    in to Connect again. Only when they turned this on in Settings. True once Moodle has handed over to McGraw Hill;
+    whether that signed Connect in is for the caller to check, on Connect's own page."""
+    if not (settings.mcgraw_via == "moodle" and settings.mcgraw_auto_renew and settings.mcgraw_launch):
+        return False
+    page = ctx.new_page()
+    handed = []   # McGraw Hill pages the launch reached
+    page.on("request", lambda r: handed.append(r.url) if r.is_navigation_request()
+            and urlparse(r.url).netloc.endswith("mheducation.com") else None)
+    try:
+        # Moodle's launch page hands straight over to McGraw Hill (a form it submits as it loads), so don't wait for
+        # it to finish loading: only for Moodle to answer, then for McGraw Hill's own page to settle
+        with contextlib.suppress(Exception):
+            page.goto(settings.mcgraw_launch, wait_until="commit")
+        for _ in range(40):
+            if handed or "/login" in page.url:
+                break
+            page.wait_for_timeout(500)
+        with contextlib.suppress(Exception):
+            page.wait_for_load_state("domcontentloaded", timeout=10_000)
+        log.info("Renewing McGraw Hill Connect through Moodle (%s): %s", settings.mcgraw_launch_name or settings.mcgraw_launch,
+                 "handed over" if handed else f"stopped at {page.url.split('?')[0]}")
+        return bool(handed)
+    finally:
+        page.close()
 
 
 def _signed_in_moodle(page: Page, host: str) -> bool:
     try:
         return _moodle_home(page.url, host) and bool(
             page.evaluate("() => (window.M && M.cfg && M.cfg.sesskey) || ''"))
+    except Exception:
+        return False
+
+
+def _signed_in_gradescope(page: Page) -> bool:
+    """In once Gradescope shows your courses: at /account or a course, or at its main address, which becomes your
+    course list ("Your Courses") after signing in."""
+    try:
+        path = urlparse(page.url).path
+        if re.match(r"/(account|courses)\b", path):
+            return True
+        return path in ("", "/") and page.locator("a.courseBox, .courseList, a[href='/logout']").count() > 0
+    except Exception:
+        return False
+
+
+def _signed_in_mcgraw(page: Page) -> bool:
+    """Connect: off its sign-in pages, with no password box, on a page that offers to sign out or shows the To Do list."""
+    try:
+        if re.search(r"login|signin|sign-in", page.url, re.I) or page.locator("input[type=password]").count():
+            return False
+        return bool(page.get_by_text(re.compile(r"(sign|log)\s*out|\bto\s*do\b", re.I)).count())
     except Exception:
         return False
 

@@ -33,6 +33,9 @@ def load(store: Store) -> dict:
         saved = {}
     if "layout" not in saved and saved.get("theme") == "birdbrain":
         saved["theme"] = theme.DEFAULT_THEME   # saved before the glass layout: the old default moves to the new one
+    for k in ("theme", "focus_theme"):          # Cozy is now Cloudy, in both layouts
+        if saved.get(k) == "night":
+            saved[k] = "cloudy"
     if saved.get("layout") == "classic":        # Classic is now Focus, and keeps the theme it had
         saved["layout"] = "focus"
         saved.setdefault("focus_theme", saved.get("theme"))

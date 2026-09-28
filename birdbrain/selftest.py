@@ -105,7 +105,7 @@ def run(out: Path) -> int:
             with wave.open(str(path)) as w:
                 lengths.append(f"{path.stem} {w.getnframes() / w.getframerate():.2f} s")
         return "bundled: " + ", ".join(lengths)
-    check("new-item squawk and day-clear chirp", sound)
+    check("new-item call and day-clear chirp", sound)
     check("first-run welcome page", lambda: "setup-form" in report.render_setup("x", prefs.DEFAULTS) and "built")
 
     def icon():

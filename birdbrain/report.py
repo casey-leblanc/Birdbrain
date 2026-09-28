@@ -35,7 +35,7 @@ from jev import EXAM_RE, QUIZ_RE
 from store import Item, Store
 
 SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outlook calendar",
-          "manual": "Added by you"}
+          "gradescope": "Gradescope", "mcgraw": "McGraw Hill Connect", "manual": "Added by you"}
 NOT_COURSES = ("Email", "Calendar", "Personal")
 e = html.escape
 
@@ -517,6 +517,26 @@ def _custom_panel(layout: str, photo, p: dict) -> str:
             '<p class="hint">Changes apply as you pick. Birdbrain works out the softer shades from these four.</p></div>')
 
 
+def _mcgraw_options(settings: Settings) -> str:
+    """Under McGraw Hill Connect in Settings: how the student gets in, and whether Birdbrain may renew that by itself."""
+    via = settings.mcgraw_via if settings.mcgraw_via in ("moodle", "direct") else "moodle"
+    ways = "".join(f'<label><input type="radio" name="mcgraw-via" value="{v}"{" checked" if via == v else ""}><span>{e(t)}</span></label>'
+                   for v, t in (("moodle", "From a link in a Moodle course"), ("direct", "At connect.mheducation.com")))
+    used = (f' Last used: <b>{e(settings.mcgraw_launch_name)}</b>.' if settings.mcgraw_launch_name
+            else " Birdbrain notes which link you click." if not settings.mcgraw_launch else "")
+    return (f'<div class="sub-options" id="mcgraw-options"{"" if settings.scan_mcgraw else " hidden"}>'
+            f'<fieldset class="field"><legend>How do you open it?</legend><div class="seg" role="radiogroup" '
+            f'aria-label="How you open McGraw Hill Connect">{ways}</div></fieldset>'
+            f'<div id="mcgraw-renew"{"" if via == "moodle" else " hidden"}>'
+            '<p class="hint">Sign in to your school sites opens your Moodle course; click any McGraw Hill link in it once and '
+            f'Birdbrain keeps the sign-in Moodle hands over.{used}</p>'
+            f'<label class="check"><input type="checkbox" id="mcgraw-auto"{" checked" if settings.mcgraw_auto_renew else ""} '
+            'aria-describedby="mcgraw-warn"><span>Renew the sign-in by itself</span></label>'
+            '<p class="hint warn-note" id="mcgraw-warn">When Connect signs you out, Birdbrain re-opens the McGraw Hill link you last '
+            'clicked in Moodle, in the background. McGraw Hill sees that as you opening that assignment, so it may show as '
+            'opened or viewed, and your instructor may see that. Leave this off if that link is a timed quiz or exam.</p></div></div>')
+
+
 # Settings is grouped by what you came to do, one tab each.
 SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Courses"), ("keywords", "Keywords"), ("app", "App"))
 
@@ -570,7 +590,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
 
     look = (
         f'<div class="set-sec"><h3>Layout</h3><div class="seg layout" role="radiogroup" aria-label="Layout">{layouts}</div>'
-        '<p class="hint">Glass sets your list on frosted panels over a photo. Focus is a calm, roomy page with '
+        '<p class="hint">Glass sets your list on frosted panels overlooking the open sky. Focus is a calm, roomy page with '
         'nothing but your list. Each has its own themes, and a Custom one you make yourself.</p>'
         f'{frame_choice}</div>'
         '<div class="set-sec"><h3>Theme</h3>'
@@ -585,9 +605,18 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<div class="btn-row"><button type="button" class="btn" id="scan-now" aria-keyshortcuts="R" title="Scan now (R)">Scan now</button>'
         '<button type="button" class="btn" id="scan-full">Full rescan of Moodle</button></div>'
         '<p class="hint" id="scan-now-msg" aria-live="polite"></p></div>'
+        '<div class="set-sec"><h3>Other sites</h3>'
+        '<p class="hint">If your courses use them, Birdbrain can read these too. Turn one on, then sign in to it below.</p>'
+        f'<label class="check"><input type="checkbox" id="site-gradescope"{" checked" if settings.scan_gradescope else ""}>'
+        '<span>Gradescope</span></label>'
+        f'<label class="check"><input type="checkbox" id="site-mcgraw"{" checked" if settings.scan_mcgraw else ""}>'
+        '<span>McGraw Hill Connect</span></label>'
+        + _mcgraw_options(settings) +
+        '<p class="hint" id="sites-msg" aria-live="polite"></p></div>'
         '<div class="set-sec"><h3>Sign in</h3>'
-        '<p class="hint">When a notification says you need to sign in again, this opens the sign-in window.</p>'
-        '<div class="btn-row"><button type="button" class="btn" id="sign-in">Sign in to Moodle and Outlook</button></div></div>'
+        '<p class="hint">Opens a window with Moodle, Outlook and any other sites you use. Sign in to each, and it closes '
+        'by itself. Use it whenever a notification says you need to sign in again.</p>'
+        '<div class="btn-row"><button type="button" class="btn" id="sign-in">Sign in to your school sites</button></div></div>'
         '<div class="set-sec"><h3>Older emails</h3>'
         '<p class="hint">Regular scans read your newest emails. To catch older ones, scan the inbox back to a date.</p>'
         '<div class="scan-row"><label class="field"><span>Scan back to</span>'
@@ -607,8 +636,8 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<p class="form-error" id="kw-error" role="alert"></p><p class="hint kw-msg" id="kw-msg" aria-live="polite"></p></div>')
     app = (
         '<div class="set-sec"><h3>Sounds</h3><div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
-        "<span>A squawk when something new is due, a chirp when you finish today's list</span></label>"
-        '<button type="button" class="act" id="sound-test">Play the squawk</button></div></div>'
+        "<span>A soft call when something new is due, a chirp when you finish today's list</span></label>"
+        '<button type="button" class="act" id="sound-test">Play the call</button></div></div>'
         + _keys() +
         '<div class="set-sec"><h3>Files</h3>'
         '<p class="hint">The settings file holds the scan interval, how far ahead to look and other options.</p>'
@@ -727,7 +756,7 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<label class="lp"><input type="radio" name="layout" value="glass">'
         f'<span class="lp-art glass-art" aria-hidden="true"{f" style=\"background-image:url(&quot;{e(art)}&quot;)\"" if art else ""}>'
         '<i></i><i></i><i></i></span><span class="lp-name">Glass</span>'
-        '<span class="lp-desc">Your list on frosted glass, over a photo that changes with the time of day.</span></label>'
+        '<span class="lp-desc">Your list on frosted panels overlooking the open sky, which changes with the time of day.</span></label>'
         '<label class="lp"><input type="radio" name="layout" value="focus">'
         '<span class="lp-art focus-art" aria-hidden="true"><i></i><i></i><i></i></span><span class="lp-name">Focus</span>'
         '<span class="lp-desc">A calm, roomy page with nothing but your list.</span></label>')
@@ -764,6 +793,10 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<li>School and work accounts usually start <b>https://outlook.office.com</b> or '
         '<b>https://outlook.cloud.microsoft</b>. Personal Outlook.com and Hotmail accounts start '
         '<b>https://outlook.live.com</b>. Choosing your account type above fills this in for you.</li></ol></details>',
+        '<fieldset class="field sites"><legend>Also check <em>optional</em></legend>'
+        '<label class="check"><input type="checkbox" name="gradescope"><span>Gradescope</span></label>'
+        '<label class="check"><input type="checkbox" name="mcgraw"><span>McGraw Hill Connect</span></label>'
+        '<p class="hint">Only if your courses use them. You sign in to each in the same window as Moodle.</p></fieldset>',
         '<p class="form-error" role="alert"></p>',
         '<div class="actions-row"><button class="btn primary" type="submit">Continue</button></div>',
         '</form></section>',
@@ -926,6 +959,9 @@ a.t:hover{text-decoration-style:solid;text-decoration-color:currentColor}
 .row:hover .act.arch,.row:focus-within .act.arch{opacity:1}
 @media (hover:none){.act.arch{opacity:1}}
 .kw-msg:empty{display:none}
+.sub-options{margin:4px 0 8px 28px;padding-left:16px;border-left:1px solid var(--line)}
+.sub-options .field{margin-bottom:4px}
+.warn-note{color:var(--text);max-width:36rem}
 /* the shortcut list: each key a small outlined cap */
 kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.8125rem;font-weight:700;line-height:1.6;text-align:center;
  color:var(--text);background:var(--bg);border:1px solid var(--edge);border-radius:5px}
@@ -961,7 +997,6 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 /* completed + archived: quiet disclosures at the foot of the page */
 /* on the columns' own grid: Completed under Now, Archived under This week */
 .bins{margin-top:120px;display:grid;grid-template-columns:minmax(0,1fr);gap:24px 72px;align-items:start}
-.bin[open]{grid-column:1/-1}
 .bin summary{position:relative;list-style:none;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;cursor:pointer;width:fit-content;min-height:44px;padding:8px 0}
 .bin summary::-webkit-details-marker{display:none}
 .bin-title{font-size:1.25rem;font-weight:300;color:var(--struct);text-transform:lowercase}
@@ -973,9 +1008,10 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 .bin summary.pulse .bin-title{animation:pulse 1s ease-out}
 @keyframes pulse{from{color:var(--accent)}}
 .hint{font-size:.8125rem;color:var(--muted);margin:4px 0 16px;max-width:40rem}
-.bin-grid{display:grid;grid-template-columns:minmax(0,1fr);column-gap:72px;align-items:start}
-@container (min-width:38rem){.bins,.bin-grid{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:56px}}
-@container (min-width:60rem){.bins,.bin-grid{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:72px}}
+/* each bin opens in place, down its own column, so opening one never moves the other */
+.bin-grid{display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
+@container (min-width:38rem){.bins{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:56px}}
+@container (min-width:60rem){.bins{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:72px}}
 
 /* dialogs: a plain sheet */
 .sheet-dialog{width:min(640px,calc(100vw - 32px));max-height:min(88vh,960px);padding:0;border:1px solid var(--line);border-radius:12px;background:var(--col);color:var(--text)}
@@ -1122,6 +1158,9 @@ html.arriving .wrap{animation:arrive .6s cubic-bezier(.16,1,.3,1) .04s both}
 @keyframes veil-lift{to{opacity:0}}
 @keyframes arrive{from{opacity:0;transform:translateY(12px)}}
 @media (prefers-reduced-motion:reduce){html.arriving::after{display:none}}
+/* a bin opening or closing: clipped while it grows or folds, and "Show" as soon as it starts to close */
+.bin.moving{overflow:hidden}
+.bin.closing .state::after{content:"Show"}
 """
 
 SCROLL_CSS = """
@@ -1225,7 +1264,8 @@ function sync(){var kind=f.account.value,now=f.outlook.value.trim();
 form.querySelectorAll('input[name=account]').forEach(function(r){r.addEventListener('change',sync);});
 sync();
 form.addEventListener('submit',function(ev){ev.preventDefault();err.textContent='';
-  var body={moodle:f.moodle.value.trim(),outlook:f.outlook.value.trim(),no_outlook:f.account.value==='none'};
+  var body={moodle:f.moodle.value.trim(),outlook:f.outlook.value.trim(),no_outlook:f.account.value==='none',
+    gradescope:f.gradescope.checked,mcgraw:f.mcgraw.checked};
   if(!body.moodle){err.textContent='Enter your Moodle address.';f.moodle.focus();return;}
   var btn=form.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Checking…';
   post(Object.assign({check:true},body)).then(function(){addr=body;show('look');})
@@ -1345,9 +1385,12 @@ function refreshBoard(focus,opts){var f=focus||focusTarget(),was=problemText(),o
   .then(function(h){wrap.innerHTML=h;bindBoard();if(o.glide)glide(o.glide,o.skip);restoreFocus(f);
     var p=problemText();if(p&&p!==was)document.getElementById('announce').textContent=wrap.querySelector('.status').textContent;});
 }
-/* the row after this one in its column or bin (focus moves there when this one is ticked off) */
+/* the row after this one in its column or bin (focus moves there when this one leaves); if it was the last there, the
+   nearest one anywhere on the page, so focus is never dropped */
 function neighbour(li){var box=li.closest('.band,.bin');if(!box)return null;
-  var all=[].slice.call(box.querySelectorAll('.row[data-id]')),i=all.indexOf(li),n=all[i+1]||all[i-1];return n?n.dataset.id:null;}
+  var all=[].slice.call(box.querySelectorAll('.row[data-id]')),i=all.indexOf(li),n=all[i+1]||all[i-1];
+  if(!n){all=listRows();i=all.indexOf(li);n=all[i+1]||all[i-1];}
+  return n?n.dataset.id:null;}
 
 /* --- motion ------------------------------------------------------------------
    A ticked item lifts off the glass as a small card and arcs into Completed while the list closes up under it;
@@ -1423,6 +1466,25 @@ function glide(before,skip){wrap.querySelectorAll(GLIDE).forEach(function(el){if
   if(k in before){var dy=before[k]-rectOf(el).top;
     if(Math.abs(dy)>1)el.animate([{transform:'translateY('+dy+'px)'},{transform:'none'}],{duration:380,easing:SETTLE});}
   else el.animate([{opacity:0},{opacity:1}],{duration:260,delay:140,easing:'ease-out',fill:'backwards'});});}
+/* The bins open and close in place: a bin grows down out of its heading to show its items, or folds back up into
+   it. Each keeps its own column, so nothing else on the page moves; a closing bin stays open until it has folded
+   away. With reduced motion they just open and close. */
+wrap.addEventListener('click',function(ev){
+  var sum=ev.target.closest&&ev.target.closest('.bin > summary');if(!sum||CALM.matches)return;
+  var bin=sum.parentElement;ev.preventDefault();if(bin.classList.contains('moving'))return;
+  var open=!bin.open,kids=[].slice.call(bin.children).filter(function(c){return c!==sum;}),from=rectOf(bin).height;
+  bin.open=open;var to=rectOf(bin).height;
+  if(!open)bin.open=true;
+  /* an even, unhurried curve: the list unrolls rather than leaping to most of its height in the first frames */
+  var dur=Math.round(Math.max(260,Math.min(520,220+Math.abs(to-from)*.35)));
+  bin.classList.add('moving');if(!open)bin.classList.add('closing');
+  var anims=[bin.animate([{height:from+'px'},{height:to+'px'}],{duration:dur,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'})];
+  kids.forEach(function(k){anims.push(k.animate(open?[{opacity:0,transform:'translateY(-4px)'},{opacity:1,transform:'none'}]:[{opacity:1},{opacity:0}],
+    {duration:open?dur:Math.round(dur*.55),delay:open?Math.round(dur*.2):0,easing:'ease-out',fill:'both'}));});
+  anims[0].finished.catch(function(){}).then(function(){
+    if(!open)bin.open=false;
+    anims.forEach(function(a){a.cancel();});bin.classList.remove('moving','closing');});
+});
 /* the last thing due today is done: one bird flies in across the window and lands on the empty branch (or, while
    tomorrow still has items, settles as the small bird beside "nothing left for today"), chirping as it lands */
 var WING=DATA.wing;   /* the same small bird that marks "nothing left for today" */
@@ -1440,15 +1502,18 @@ function birdLands(){var p=perchSpot(),chirp=function(){api('/api/chirp').catch(
   el.className='flier';el.setAttribute('aria-hidden','true');el.innerHTML=WING;
   el.style.offsetPath="path('M"+x0+' '+y0+'C'+(W*.5)+' '+(y0-40)+' '+(x+dx+180)+' '+(y+dy-140)+' '+(x+dx)+' '+(y+dy)+"')";
   document.body.appendChild(el);
+  var FLIGHT=1800;
+  /* the chirp starts a second before the bird settles, so it's heard as it lands rather than after (unless Undo took
+     the item back while it was in the air) */
+  setTimeout(function(){if(p.mark.isConnected)chirp();},FLIGHT+(p.drop?220:0)-1000);
   el.animate([{offsetDistance:'0%',transform:'scale('+s*.5+')',opacity:0},{opacity:1,offset:.06},
-    {offsetDistance:'100%',transform:'scale('+s+')',opacity:1}],{duration:1800,easing:'cubic-bezier(.25,.1,.25,1)',fill:'forwards'})
+    {offsetDistance:'100%',transform:'scale('+s+')',opacity:1}],{duration:FLIGHT,easing:'cubic-bezier(.25,.1,.25,1)',fill:'forwards'})
     .finished.then(function(){
       if(!p.mark.isConnected){el.remove();return;}   /* the list changed under it (Undo) */
       p.box.classList.remove('waiting');
       p.mark.animate(p.drop?[{transform:'translate('+dx+'px,'+dy+'px) rotate(-10deg)',opacity:0},
         {transform:'translate(3px,-5px) rotate(-3deg)',opacity:1,offset:.45},{transform:'none',opacity:1}]
         :[{opacity:0},{opacity:1}],{duration:p.drop?440:200,easing:'cubic-bezier(.2,.7,.3,1)'});
-      setTimeout(chirp,p.drop?220:0);
       return el.animate([{opacity:1},{opacity:0}],{duration:150,fill:'forwards'}).finished;})
     .then(function(){el.remove();},function(){el.remove();});}
 /* Home again (Undo, or Show on list): the item comes back from wherever it is: still in the air (the flight turns
@@ -1730,7 +1795,7 @@ settings.querySelectorAll('input[name=frame]').forEach(function(r){
   r.checked=r.value===(PREFS.frame||'wide');
   r.addEventListener('change',function(){PREFS.frame=r.value;root.dataset.frame=r.value;savePrefs({frame:r.value});});});
 
-/* the squawk when something new is due */
+/* the call when something new is due */
 var soundOn=document.getElementById('sound-on');soundOn.checked=PREFS.sound!==false;
 soundOn.addEventListener('change',function(){PREFS.sound=soundOn.checked;savePrefs({sound:soundOn.checked});});
 document.getElementById('sound-test').addEventListener('click',function(){api('/api/sound').catch(function(e){toast(e.message);});});
@@ -1746,6 +1811,25 @@ function startScan(full){api('/api/scan',full?{full:true}:{}).then(function(){
   .catch(function(e){nowMsg.textContent=e.message;});}
 document.getElementById('scan-now').addEventListener('click',function(){startScan(false);});
 document.getElementById('scan-full').addEventListener('click',function(){startScan(true);});
+/* McGraw Hill Connect: how it's reached, and whether Birdbrain may renew the sign-in by itself */
+var mhOpts=document.getElementById('mcgraw-options'),mhRenew=document.getElementById('mcgraw-renew'),mhAuto=document.getElementById('mcgraw-auto');
+document.getElementById('site-mcgraw').addEventListener('change',function(ev){mhOpts.hidden=!ev.target.checked;});
+settings.querySelectorAll('input[name=mcgraw-via]').forEach(function(r){r.addEventListener('change',function(){
+  mhRenew.hidden=r.value!=='moodle';var msg=document.getElementById('sites-msg');
+  api('/api/sites',{mcgraw_via:r.value}).then(function(){msg.textContent=r.value==='moodle'
+    ?'Next time you sign in, click any McGraw Hill link in your Moodle course once.'
+    :'Next time you sign in, sign in to Connect on its own page.';}).catch(function(e){msg.textContent="Couldn't save: "+e.message;});});});
+mhAuto.addEventListener('change',function(){var msg=document.getElementById('sites-msg');
+  api('/api/sites',{mcgraw_auto_renew:mhAuto.checked}).then(function(){msg.textContent=mhAuto.checked
+    ?'Birdbrain will re-open your last McGraw Hill link by itself when Connect signs you out.'
+    :'Birdbrain will ask you to sign in again instead.';}).catch(function(e){mhAuto.checked=!mhAuto.checked;msg.textContent="Couldn't save: "+e.message;});});
+/* the other sites: saved at once; turning one on says how to sign in to it */
+['gradescope','mcgraw'].forEach(function(k){var box=document.getElementById('site-'+k),msg=document.getElementById('sites-msg');
+  box.addEventListener('change',function(){var b={};b[k]=box.checked;
+    api('/api/sites',b).then(function(){var name=k==='gradescope'?'Gradescope':'McGraw Hill Connect';
+      msg.textContent=box.checked?name+' is on. Sign in to it with “Sign in to your school sites” below, and the next scan reads it.'
+        :name+' is off. Birdbrain stops reading it; what it already found stays on your list.';})
+    .catch(function(e){box.checked=!box.checked;msg.textContent="Couldn't save: "+e.message;});});});
 document.getElementById('sign-in').addEventListener('click',function(){api('/api/sign-in').then(function(){
   nowMsg.textContent="The sign-in window is opening. It closes by itself once you're signed in.";})
   .catch(function(e){nowMsg.textContent=e.message;});});
@@ -1851,8 +1935,8 @@ if(LIVE){
   try{['theme','mode','courses','bins','done'].forEach(function(k){var v=localStorage.getItem('studytray-'+k);if(v!==null)old[k]=v;});}catch(e){}
   if(Object.keys(old).length&&!PREFS.imported){
     var patch={imported:true},t=old.theme,j=function(s){try{return JSON.parse(s)}catch(e){return null}};
-    if(['light','night-light','paper','aubergine'].indexOf(t)>=0){patch.theme='night';patch.mode='light';}
-    else{if(t==='dark')t='night';if(DATA.themes.indexOf(t)>=0)patch.theme=t;if(DATA.modes.indexOf(old.mode)>=0)patch.mode=old.mode;}
+    if(['light','night-light','paper','aubergine'].indexOf(t)>=0){patch.theme='cloudy';patch.mode='light';}
+    else{if(t==='dark'||t==='night')t='cloudy';if(DATA.themes.indexOf(t)>=0)patch.theme=t;if(DATA.modes.indexOf(old.mode)>=0)patch.mode=old.mode;}
     var cs=j(old.courses);if(cs&&typeof cs==='object')patch.courses=cs;
     var bs=j(old.bins);if(bs&&typeof bs==='object')patch.bins=bs;
     var dn=j(old.done)||{},ids=Object.keys(dn).filter(function(k){return dn[k];});

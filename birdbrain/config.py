@@ -110,6 +110,17 @@ class Settings:
     email_scan_count: int = 50                             # newest inbox messages read per scan
     scan_outlook_mail: bool = True
     scan_outlook_calendar: bool = True
+    scan_gradescope: bool = False                          # also read Gradescope (signed in like Moodle and Outlook)
+    gradescope_url: str = "https://www.gradescope.com"     # or a school's own, e.g. https://www.gradescope.ca
+    scan_mcgraw: bool = False                              # also read McGraw Hill Connect
+    mcgraw_url: str = "https://connect.mheducation.com"
+    mcgraw_via: str = "moodle"                             # "moodle": signed in by a McGraw Hill link in a Moodle
+                                                           # course (LTI); "direct": at mcgraw_url
+    mcgraw_launch: str = ""                                # the Moodle link last used to reach Connect
+    mcgraw_launch_name: str = ""                           # ...and what it's called, for Settings
+    mcgraw_course: str = ""                                # the Moodle course page it was clicked on
+    mcgraw_sections: list = field(default_factory=list)  # Connect class pages seen (each lists every assignment)
+    mcgraw_auto_renew: bool = False                        # re-open mcgraw_launch by itself when Connect signs out
     typesafe_api_key: str = ""                             # falls back to TYPESAFE_API_KEY env var
     typesafe_model: str = "jev-latest"
     notify: bool = True

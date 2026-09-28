@@ -67,9 +67,30 @@ def _containment(moodle_title: str, other_words: list[str]) -> float:
     return hits / len(want)
 
 
+# Other course sites with their own exact dates (Gradescope, McGraw Hill Connect). Their items are real work, so they
+# only count as a copy of a Moodle item under the strict same_assignment() test, never the looser one for emails.
+SITES = ("gradescope:", "mcgraw:")
+
+
+def same_assignment(item: Item, other: Item) -> bool:
+    """Strictly the same piece of work on two sites: the same course code, due within two days, and titles that match
+    once spacing and punctuation are ignored ("HW 3" and "HW3") or share nearly all their words."""
+    codes = _codes(f"{item.course} {item.title}")
+    if not (codes and item.due and other.due) or not codes & (_codes(other.course) | _codes(other.title)):
+        return False
+    if abs((item.due.date() - other.due.date()).days) > 2:
+        return False
+    plain = lambda t: re.sub(r"[^a-z0-9]", "", html.unescape(t).lower())
+    return plain(item.title) == plain(other.title) or (
+        len(set(_tokens(other.title))) >= 2 and _containment(other.title, _tokens(item.title)) >= .8)
+
+
 def duplicate_of(item: Item, structured: list[Item]) -> Item | None:
     if item.id.startswith(STRUCTURED) or item.source == "manual" or not item.due:
         return None  # things you added yourself are never treated as duplicates
+    if item.id.startswith(SITES):
+        fits = [s for s in structured if same_assignment(item, s)]
+        return fits[0] if len(fits) == 1 else None
     words, codes = _tokens(_text(item)), _codes(_text(item))
     best, best_score = None, 0.0
     for s in structured:
