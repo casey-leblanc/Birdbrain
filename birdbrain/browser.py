@@ -188,11 +188,25 @@ def _moodle_home(url: str, host: str) -> bool:
     return u.netloc == host and not re.match(r"/(login|auth)/", u.path)
 
 
-def interactive_login(settings: Settings) -> None:
+def _go(page: Page, url: str) -> bool:
+    """Open a site in the sign-in window. False if it can't be reached (a mistyped address, usually): its tab keeps the
+    browser's own error page, and the window stops waiting on that site instead of failing."""
+    try:
+        page.goto(url, wait_until="domcontentloaded")
+        return True
+    except Exception as e:
+        log.warning("The sign-in window couldn't open %s: %s", url, str(e).splitlines()[0][:200])
+        return False
+
+
+def interactive_login(settings: Settings) -> list[str]:
     """Visible Edge window for signing in. Presses Moodle's sign-in button for
     you, closes itself once both sites are signed in (or when you close it),
-    and hands the cookies to the background scanner."""
+    and hands the cookies to the background scanner. Returns the sites it
+    couldn't even open ("Moodle", "Outlook", ...), so Birdbrain can say which
+    address to check."""
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    missed: list[str] = []
     base = settings.moodle_url.rstrip("/")
     want_outlook = settings.scan_outlook_mail or settings.scan_outlook_calendar
     with sync_playwright() as pw:
@@ -207,15 +221,20 @@ def interactive_login(settings: Settings) -> None:
         moodle_page = outlook_page = None
         if base:
             moodle_page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            moodle_page.goto(base + "/my/", wait_until="domcontentloaded")
-            if "/login/" in moodle_page.url:
+            if not _go(moodle_page, base + "/my/"):
+                missed.append("Moodle")
+                moodle_page = None
+            elif "/login/" in moodle_page.url:
                 with contextlib.suppress(Exception):
                     moodle_sso(moodle_page, base)
         if want_outlook:
             outlook_page = ctx.new_page()
-            outlook_page.goto(settings.outlook_url.rstrip("/") + "/mail/", wait_until="domcontentloaded")
-            outlook_page.wait_for_timeout(1_500)
-            if on_ms_login(outlook_page.url):
+            if not _go(outlook_page, settings.outlook_url.rstrip("/") + "/mail/"):
+                missed.append("Outlook")
+                outlook_page = None
+            else:
+                outlook_page.wait_for_timeout(1_500)
+            if outlook_page and on_ms_login(outlook_page.url):
                 with contextlib.suppress(Exception):
                     complete_sign_in(outlook_page, lambda u: not on_ms_login(u), timeout_s=20)
 
@@ -223,20 +242,26 @@ def interactive_login(settings: Settings) -> None:
         site_pages = []
         if settings.scan_gradescope:
             p = ctx.new_page()
-            p.goto(settings.gradescope_url.rstrip("/") + "/login", wait_until="domcontentloaded")
-            site_pages.append((p, _signed_in_gradescope))
+            if _go(p, settings.gradescope_url.rstrip("/") + "/login"):
+                site_pages.append((p, _signed_in_gradescope))
+            else:
+                missed.append("Gradescope")
         connect = None
         if settings.scan_mcgraw and settings.mcgraw_via == "moodle" and base:
             # Connect through Moodle: the student's course, a note saying what to do, and a watch for Connect opening
             connect = ConnectWatch(ctx, base)
             p = ctx.new_page()
             p.add_init_script(_note_js(urlparse(base).netloc))
-            p.goto(settings.mcgraw_course or base + "/my/courses.php", wait_until="domcontentloaded")
-            site_pages.append((p, lambda _p: connect.done()))
+            if _go(p, settings.mcgraw_course or base + "/my/courses.php"):
+                site_pages.append((p, lambda _p: connect.done()))
+            elif "Moodle" not in missed:   # it's a Moodle page, so Moodle's address is the one to check
+                missed.append("McGraw Hill Connect")
         elif settings.scan_mcgraw:
             p = ctx.new_page()
-            p.goto(settings.mcgraw_url.rstrip("/"), wait_until="domcontentloaded")
-            site_pages.append((p, _signed_in_mcgraw))
+            if _go(p, settings.mcgraw_url.rstrip("/")):
+                site_pages.append((p, _signed_in_mcgraw))
+            else:
+                missed.append("McGraw Hill Connect")
 
         host = urlparse(base).netloc
         while ctx.pages:
@@ -257,6 +282,7 @@ def interactive_login(settings: Settings) -> None:
             connect.remember()
         with contextlib.suppress(Exception):
             ctx.close()
+    return missed
 
 
 # --- McGraw Hill Connect through Moodle ------------------------------------------------------------------------

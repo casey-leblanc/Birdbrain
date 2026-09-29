@@ -409,7 +409,7 @@ def render_board(b: Board, settings: Settings, status: str, now: datetime, versi
     """Everything inside the page wrapper; the live page swaps this in after a change."""
     prefs = prefs or prefs_mod.DEFAULTS
     courses = prefs["courses"]
-    warn = "sign-in" in status.lower() or "failed" in status.lower()
+    warn = any(w in status.lower() for w in ("sign-in", "failed", "couldn't reach"))
     # An empty list isn't "all clear" until a scan has looked (the first scan is always a full one).
     scanned = not status.lower().startswith(("not scanned", "full moodle scan"))
     return "".join([
@@ -537,6 +537,30 @@ def _mcgraw_options(settings: Settings) -> str:
             'opened or viewed, and your instructor may see that. Leave this off if that link is a timed quiz or exam.</p></div></div>')
 
 
+def _addresses(settings: Settings) -> str:
+    """Settings > Scanning: where Moodle and Outlook are, to fix an address mistyped at setup or move to another.
+    The same fields as the welcome page; a changed address is saved, then signed in to."""
+    outlook_on = settings.scan_outlook_mail or settings.scan_outlook_calendar
+    account = "none" if not outlook_on else "personal" if "live.com" in settings.outlook_url else "school"
+    accounts = "".join(
+        f'<label><input type="radio" name="addr-account" value="{v}"{" checked" if v == account else ""}><span>{e(t)}</span></label>'
+        for v, t in (("school", "School or work"), ("personal", "Personal (Outlook.com, Hotmail)"), ("none", "I don't use Outlook")))
+    return ('<div class="set-sec" id="addr-sec"><h3>Moodle and Outlook</h3>'
+            '<p class="hint">Where Birdbrain finds your courses and email. Paste the address of any page from your browser; '
+            'Birdbrain keeps just the start.</p>'
+            '<form id="addr-form" novalidate>'
+            '<label class="field"><span>Moodle address</span><input id="addr-moodle" type="url" inputmode="url" autocomplete="off" '
+            f'spellcheck="false" placeholder="https://moodle.yourschool.edu" value="{e(settings.moodle_url)}"></label>'
+            '<fieldset class="field"><legend>Outlook account</legend>'
+            f'<div class="seg" role="radiogroup" aria-label="Outlook account">{accounts}</div></fieldset>'
+            f'<div id="addr-outlook-field"{"" if outlook_on else " hidden"}><label class="field"><span>Outlook address</span>'
+            '<input id="addr-outlook" type="url" inputmode="url" autocomplete="off" spellcheck="false" '
+            f'value="{e(settings.outlook_url)}"></label></div>'
+            '<p class="form-error" id="addr-error" role="alert"></p>'
+            '<div class="btn-row"><button type="submit" class="btn">Save addresses</button></div>'
+            '<p class="hint" id="addr-msg" aria-live="polite"></p></form></div>')
+
+
 # Settings is grouped by what you came to do, one tab each.
 SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Courses"), ("keywords", "Keywords"), ("app", "App"))
 
@@ -605,6 +629,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<div class="btn-row"><button type="button" class="btn" id="scan-now" aria-keyshortcuts="R" title="Scan now (R)">Scan now</button>'
         '<button type="button" class="btn" id="scan-full">Full rescan of Moodle</button></div>'
         '<p class="hint" id="scan-now-msg" aria-live="polite"></p></div>'
+        + _addresses(settings) +
         '<div class="set-sec"><h3>Other sites</h3>'
         '<p class="hint">If your courses use them, Birdbrain can read these too. Turn one on, then sign in to it below.</p>'
         f'<label class="check"><input type="checkbox" id="site-gradescope"{" checked" if settings.scan_gradescope else ""}>'
@@ -1811,6 +1836,27 @@ function startScan(full){api('/api/scan',full?{full:true}:{}).then(function(){
   .catch(function(e){nowMsg.textContent=e.message;});}
 document.getElementById('scan-now').addEventListener('click',function(){startScan(false);});
 document.getElementById('scan-full').addEventListener('click',function(){startScan(true);});
+/* where Moodle and Outlook are: fix a mistyped address or move to another. A new one is signed in to straight away. */
+var addrForm=document.getElementById('addr-form'),addrMoodle=document.getElementById('addr-moodle'),
+    addrOutlook=document.getElementById('addr-outlook'),addrErr=document.getElementById('addr-error'),addrMsg=document.getElementById('addr-msg'),
+    OUTLOOK_SITES={school:'https://outlook.office.com',personal:'https://outlook.live.com'};
+function addrAccount(){return addrForm.querySelector('input[name=addr-account]:checked').value;}
+addrForm.querySelectorAll('input[name=addr-account]').forEach(function(r){r.addEventListener('change',function(){
+  var now=addrOutlook.value.trim();document.getElementById('addr-outlook-field').hidden=r.value==='none';
+  if(OUTLOOK_SITES[r.value]&&(!now||now===OUTLOOK_SITES.school||now===OUTLOOK_SITES.personal))addrOutlook.value=OUTLOOK_SITES[r.value];});});
+addrForm.addEventListener('submit',function(ev){ev.preventDefault();addrErr.textContent='';addrMsg.textContent='';
+  var none=addrAccount()==='none',btn=addrForm.querySelector('button[type=submit]');
+  [addrMoodle,addrOutlook].forEach(function(i){i.removeAttribute('aria-invalid');i.removeAttribute('aria-describedby');});
+  btn.disabled=true;
+  api('/api/addresses',{moodle:addrMoodle.value.trim(),outlook:addrOutlook.value.trim(),no_outlook:none}).then(function(r){
+    addrMoodle.value=r.moodle;if(r.outlook)addrOutlook.value=r.outlook;
+    addrMsg.textContent=r.sign_in?"Saved. The sign-in window is opening for the new address. It closes by itself once you're signed in."
+      :r.outlook_off?'Saved. Birdbrain stops reading Outlook; what it already found stays on your list.'
+      :'Saved. These are the addresses Birdbrain was already using.';})
+  .catch(function(e){addrErr.textContent=e.message;   /* the message names the site it's about */
+    var bad=!none&&/outlook/i.test(e.message)?addrOutlook:addrMoodle;
+    bad.setAttribute('aria-invalid','true');bad.setAttribute('aria-describedby','addr-error');bad.focus();})
+  .then(function(){btn.disabled=false;});});
 /* McGraw Hill Connect: how it's reached, and whether Birdbrain may renew the sign-in by itself */
 var mhOpts=document.getElementById('mcgraw-options'),mhRenew=document.getElementById('mcgraw-renew'),mhAuto=document.getElementById('mcgraw-auto');
 document.getElementById('site-mcgraw').addEventListener('change',function(ev){mhOpts.hidden=!ev.target.checked;});

@@ -25,6 +25,7 @@ import time
 import webbrowser
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pystray
 from PIL import Image, ImageDraw, ImageFont
@@ -60,6 +61,18 @@ def squawk(sound: Path = SQUAWK) -> None:
     except Exception:
         log.exception("Couldn't play %s", sound.name)
 SHOW_EVENT = "Local\\BirdbrainShowWindow"   # a second launch sets this to bring the window up
+
+# The browser's errors for an address that leads nowhere: no such site, nothing answering there, or not a site it trusts.
+_NO_SITE = re.compile(r"ERR_NAME_NOT_RESOLVED|ERR_ADDRESS_UNREACHABLE|ERR_CONNECTION_REFUSED|ERR_CERT_|ERR_SSL_PROTOCOL|"
+                      r"ERR_INVALID_URL|ERR_TOO_MANY_REDIRECTS")
+
+
+def _trouble(name: str, address: str, e: Exception) -> str:
+    """A failed scan in words the student can act on: a site that can't be reached is usually a mistyped address,
+    which Settings can change."""
+    if _NO_SITE.search(str(e)):
+        return f"Couldn't reach {name} at {urlparse(address).netloc or address}; check the address in Settings › Scanning"
+    return f"{name} scan failed (see log)"
 
 
 # The perched bird from the page's "all clear" drawing (report.PERCH), in its 96 x 60 drawing units: the body as
@@ -237,7 +250,7 @@ class App:
     def _page_actions(self) -> dict:
         return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "sites": self.api_sites, "keywords": self.api_keywords,
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
-                "setup": self.api_setup}
+                "setup": self.api_setup, "addresses": self.api_addresses}
 
     def api_setup(self, body: dict) -> dict:
         """The welcome page. With "check", just tidy and check the addresses (step 1); otherwise save them and
@@ -262,6 +275,38 @@ class App:
         log.info("Set up: Moodle %s, Outlook %s", s.moodle_url, "off" if body.get("no_outlook") else s.outlook_url)
         self.set_up.set()
         return {"ok": True, "moodle": s.moodle_url}
+
+    def api_addresses(self, body: dict) -> dict:
+        """Settings > Scanning: change where Moodle and Outlook are (one mistyped at setup, say). A new address needs
+        signing in to, so the sign-in window opens for it, and the first scan of a new Moodle reads every course page."""
+        s = Settings.load()
+        moodle = clean_moodle_url(str(body.get("moodle", "")))
+        outlook = None if body.get("no_outlook") else clean_outlook_url(str(body.get("outlook", "")))
+        was_on = s.scan_outlook_mail or s.scan_outlook_calendar
+        new_moodle = moodle != s.moodle_url
+        new_outlook = outlook is not None and (outlook != s.outlook_url or not was_on)
+        outlook_off = outlook is None and was_on
+        if new_moodle:
+            s.moodle_url = moodle
+            if not all(u.startswith(moodle + "/") for u in (s.mcgraw_launch, s.mcgraw_course) if u):
+                s.mcgraw_launch = s.mcgraw_launch_name = s.mcgraw_course = ""   # the McGraw Hill link was on the old one
+        if outlook is None:
+            s.scan_outlook_mail = s.scan_outlook_calendar = False
+        else:
+            s.outlook_url = outlook
+            if not was_on:
+                s.scan_outlook_mail = s.scan_outlook_calendar = True
+        s.save()
+        self.settings = s
+        log.info("Addresses now: Moodle %s, Outlook %s", s.moodle_url, s.outlook_url if outlook else "off")
+        if new_moodle:
+            self.force_full = True
+        if new_moodle or new_outlook:
+            self.on_login()
+        elif outlook_off:
+            self.wake.set()
+        return {"ok": True, "moodle": s.moodle_url, "outlook": outlook, "sign_in": new_moodle or new_outlook,
+                "outlook_off": outlook_off}
 
     def api_sound(self, body: dict) -> dict:
         squawk()   # "Play the squawk" in Settings
@@ -343,11 +388,24 @@ class App:
 
     def on_login(self, *_):
         def run():
-            with self.lock:
-                interactive_login(self.settings)
-            self.store.set_meta("login_done", "1")
+            self._sign_in()
             self.wake.set()
         threading.Thread(target=run, daemon=True).start()
+
+    def _sign_in(self) -> None:
+        """The sign-in window; then, if a site couldn't even be opened, say which, and where to change its address.
+        The window failing outright is logged, and scanning carries on (it says what's wrong in its own words)."""
+        try:
+            with self.lock:
+                missed = interactive_login(self.settings)
+        except Exception:
+            log.exception("The sign-in window failed")
+            missed = []
+        self.store.set_meta("login_done", "1")
+        if missed:
+            what = " and ".join(missed)
+            self._set_status(f"Couldn't reach {what}; check the address in Settings › Scanning.")
+            self.notify("If the address is wrong, change it in Settings › Scanning.", f"Couldn't reach {what}")
 
     def on_keywords(self, *_):
         if self.dialog_open.locked():
@@ -435,18 +493,18 @@ class App:
                 except NeedsLogin as e:
                     log.warning("%s", e)
                     problems.append("Moodle needs sign-in")
-                except Exception:
+                except Exception as e:
                     log.exception("Moodle scan failed")
-                    problems.append("Moodle scan failed (see log)")
+                    problems.append(_trouble("Moodle", self.settings.moodle_url, e))
             if self.settings.scan_outlook_mail or self.settings.scan_outlook_calendar:
                 try:
                     new += Outlook(self.settings, self.store, self.jev).scan(ctx)
                 except NeedsLogin as e:
                     log.warning("%s", e)
                     problems.append("Outlook needs sign-in")
-                except Exception:
+                except Exception as e:
                     log.exception("Outlook scan failed")
-                    problems.append("Outlook scan failed (see log)")
+                    problems.append(_trouble("Outlook", self.settings.outlook_url, e))
             # the other course sites, when the student uses them
             for on, site, name in ((self.settings.scan_gradescope, Gradescope, "Gradescope"),
                                    (self.settings.scan_mcgraw, McGraw, "McGraw Hill Connect")):
@@ -511,9 +569,7 @@ class App:
         if self.store.get_meta("login_done") != "1" or not STATE_PATH.exists():
             self.notify("Sign in to your school sites in the window that opens. "
                         "It closes by itself once you're signed in.")
-            with self.lock:
-                interactive_login(self.settings)
-            self.store.set_meta("login_done", "1")
+            self._sign_in()
         while not self.stop.is_set():
             self.scanning = True
             since = self.mail_since
