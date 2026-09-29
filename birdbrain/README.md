@@ -7,7 +7,7 @@ keeps scanning from the system tray while the window is closed.
 
 ## Install (packaged app)
 
-1. Unzip `Birdbrain-1.1.0-windows.zip` anywhere you like, for example
+1. Unzip `Birdbrain-1.1.2-windows.zip` anywhere you like, for example
    `%LOCALAPPDATA%\Programs\Birdbrain`.
 2. Run `Birdbrain.exe`. No Python is needed. Its window opens; the first time, it
    welcomes you and asks where your Moodle and Outlook are (see **First run** below).
