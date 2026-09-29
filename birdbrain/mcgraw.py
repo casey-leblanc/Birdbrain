@@ -7,8 +7,11 @@ such a link once (browser.ConnectWatch), and this reader then uses the sign-in M
 the reader re-opens that same link through Moodle (browser.relaunch_connect), but only if the student turned that on.
 
 Connect (newconnect.mheducation.com) lists assignments in two places: the To Do list, which only covers the next few
-days, and each class's own page (/student/class/section/<id>), which lists all of them. This reads the To Do list and
-every class page it links to or the student has opened, as assignment cards: a name, "Start: ... Due: Oct 2, 2026 at
+days, and each class's own page (/student/class/section/<id>), which lists all of them. Some courses link Moodle to the
+class page; others link each Moodle activity to a single assignment, so the student may never see a class page. Either
+way, Connect's addresses name the class, so this reads the To Do list and every class page named anywhere: on the way in
+from Moodle (browser.ConnectWatch), in the To Do list's links, or on the class list or calendar in Connect's own menu.
+It reads them as assignment cards: a name, "Start: ... Due: Oct 2, 2026 at
 11:59 PM CDT", and the class ("Fall 2026 CHEM 1212 Connect Lab"). Work already completed, submitted or scored
 is left off (and comes off the list once it is). A due date read without a time is marked "date unsure".
 """
@@ -62,8 +65,19 @@ _TODO_JS = r"""() => {
   });
 }"""
 
-# a class's own page, which lists every assignment (the To Do list only has the next few days)
-_SECTIONS_JS = r"""() => [...new Set([...document.querySelectorAll('a[href*="/student/class/section/"]')].map(a => a.href.split('?')[0]))]"""
+# The classes a page leads to: each class's own page, which lists every assignment (the To Do list only has the next few
+# days), from any Connect link naming a class (a class page, or one assignment: /section/<id> or sectionId=<id>); and
+# the class list or calendar in Connect's own menu, which name more of them.
+_CLASSES_JS = r"""() => { const ids = new Set(), menus = new Set(), ID = /\/class\/section\/(\d+)|\/sections?\/(\d{6,})|[?&]section_?id=(\d{6,})/i;
+  for (const a of document.querySelectorAll('a[href]')) {
+    const href = a.href.split('#')[0], path = href.split('?')[0], m = href.match(ID);
+    if (!/^https:\/\/[^\/]*mheducation\.com\//i.test(href)) continue;
+    if (m) ids.add(m[1] || m[2] || m[3]);
+    else if (/^(my )?(classes|courses|calendar)$/i.test(a.textContent.replace(/\s+/g, ' ').trim()) && /\/student\/[a-z\/-]+$/i.test(path))
+      menus.add(path);
+  }
+  return {sections: [...ids].map(id => 'https://newconnect.mheducation.com/student/class/section/' + id), menus: [...menus]}; }"""
+PAGES_PER_SCAN = 10
 TODO_URL = "https://newconnect.mheducation.com/student/todo"
 
 _DUE_AT = re.compile(
@@ -123,16 +137,21 @@ class McGraw:
                 self._open(page, self.pages[0])
             if self._signed_out(page):
                 raise NeedsLogin(f"McGraw Hill Connect sign-in needed at {page.url}")
-            # the To Do list, then every class page it links to or the student has opened (at most eight pages)
+            # the To Do list, then Connect's class list or calendar if its menu has them, then every class page named
+            # anywhere (at most PAGES_PER_SCAN pages)
             urls, rows, read = list(self.pages), {}, []
-            for i in range(8):
+            for i in range(PAGES_PER_SCAN):
                 if i >= len(urls):
                     break
                 if i:
                     self._open(page, urls[i])
                     if self._signed_out(page):
                         break
-                urls += [u for u in page.evaluate(_SECTIONS_JS) if u not in urls]
+                leads = page.evaluate(_CLASSES_JS)
+                for u in reversed(leads["menus"]):   # read next: they name the classes
+                    if u not in urls:
+                        urls.insert(i + 1, u)
+                urls += [u for u in leads["sections"] if u not in urls]
                 found = page.evaluate(_TODO_JS)
                 read.append(f"{page.url.split('?')[0].split('mheducation.com')[-1]} ({len(found)})")
                 for r in found:

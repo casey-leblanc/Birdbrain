@@ -86,15 +86,19 @@ sign in when Microsoft wants a password or code again.
 | Outlook inbox | The newest 50 message previews (it never opens a message, so nothing gets marked read) | Decides whether an email describes an assignment, test or event, and reads its date. Relative dates like "due tomorrow" count from the day the email was sent |
 | Outlook calendar | Week views over the next 30 days (recurring events are skipped unless they're tests) | Classifies each event |
 | Gradescope, **if turned on** | This term's courses on your Gradescope dashboard, and each course's assignment list with its exact due time. Anything already submitted or graded is left off, and taken off once you submit it; Moodle's own entry for the same assignment, if it has one, is ticked off too | None: Gradescope gives exact dates |
-| McGraw Hill Connect, **if turned on** | Connect's To Do list (the next few days) and each class's own page (every assignment), read as assignment cards: the name, the class and the due time. Work showing **See report**, a score or Completed is left off, and so is anything locked once its due date has passed (it can't be done any more); an assignment that's locked because it hasn't opened yet is listed | None |
+| McGraw Hill Connect, **if turned on** | Connect's To Do list (the next few days) and each class's own page (every assignment), found wherever Connect names the class: on the way in from Moodle, in the To Do list's links, or on the class list or calendar in Connect's own menu. Read as assignment cards: the name, the class and the due time. Work showing **See report**, a score or Completed is left off, and so is anything locked once its due date has passed (it can't be done any more); an assignment that's locked because it hasn't opened yet is listed | None |
 
 **McGraw Hill through Moodle.** Many courses open Connect from a McGraw Hill link inside the
 Moodle course, and Moodle doesn't hold those assignments' due dates; only Connect does. With
 McGraw Hill Connect on and **From a link in a Moodle course** chosen (the default, in Settings ›
 Scanning), **Sign in to your school sites** opens your Moodle course with a note: click any McGraw
 Hill link in it once. Moodle signs Birdbrain's browser in to Connect, Birdbrain notes which link
-you used and the class page it opened on, the note on the Moodle page says Connect is signed in,
-and the window closes once every site is. Scans then read Connect's To Do list. When Connect signs you
+you used and the class it belongs to, the note on the Moodle page says Connect is signed in,
+and the window closes once every site is. Scans then read Connect's To Do list and your classes'
+own pages. Some courses link each Moodle activity to a single assignment
+instead of the class: clicking one opens that assignment, so pick one you've already finished,
+never a timed quiz or exam. Birdbrain still finds the class from Connect's own addresses and reads
+all of its assignments; it never opens an assignment itself. When Connect signs you
 out, you're asked to sign in again the same way, unless you turn on **Renew the sign-in by
 itself**: then Birdbrain re-opens the link you last clicked, in the background. McGraw Hill sees
 that as you opening that assignment, so leave it off if that link is a timed quiz or exam.

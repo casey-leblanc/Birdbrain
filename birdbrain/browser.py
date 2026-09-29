@@ -286,6 +286,27 @@ def interactive_login(settings: Settings) -> list[str]:
 
 
 # --- McGraw Hill Connect through Moodle ------------------------------------------------------------------------
+# A Connect class (a "section") has its own page listing every assignment. Some courses link Moodle to that page; others
+# link each Moodle activity to a single assignment. Either way Connect's addresses name the class, in the path
+# (/section/123456789) or as sectionId=, so any of them leads to the class page.
+SECTION_URL = "https://newconnect.mheducation.com/student/class/section/{}"
+_SECTION_ID = re.compile(r"/class/section/(\d+)|/sections?/(\d{6,})|[?&]section_?id=(\d{6,})", re.I)
+
+
+def section_page(url: str) -> str | None:
+    """The class page for a Connect address that names a class, if it does."""
+    if not urlparse(url).netloc.endswith("mheducation.com"):
+        return None
+    m = _SECTION_ID.search(url)
+    return SECTION_URL.format(next(g for g in m.groups() if g)) if m else None
+
+
+def _shape(url: str) -> str:
+    """An address without its numbers or query, for the log: where Connect opened, without anything personal."""
+    u = urlparse(url)
+    return u.netloc + re.sub(r"\d+", "N", u.path)
+
+
 class ConnectWatch:
     """Watches a sign-in window while the student clicks a McGraw Hill link in their Moodle course: which Moodle link
     it was (an external-tool activity, mod/lti), the course page it was on, and when Connect opened from it. Moodle
@@ -294,7 +315,7 @@ class ConnectWatch:
     def __init__(self, ctx: BrowserContext, moodle_base: str):
         self.base = moodle_base.rstrip("/")
         self.link = self.course = self.name = ""
-        self.sections: list[str] = []   # Connect class pages it opened on (each lists every assignment)
+        self.sections: list[str] = []   # Connect class pages named on the way in (each lists every assignment)
         self.opened_at = 0.0
         self.told = False
         ctx.on("request", self._request)
@@ -309,9 +330,11 @@ class ConnectWatch:
         elif urlparse(url).netloc.endswith("mheducation.com") and not re.search(r"login|signin|sign-in", url, re.I):
             if req.is_navigation_request() and not self.opened_at:
                 self.opened_at = time.time()
-                log.info("McGraw Hill Connect opened from Moodle")
-            if (m := re.match(r"https://[^/]*mheducation\.com/student/class/section/\d+", url)) and m.group(0) not in self.sections:
-                self.sections.append(m.group(0))
+                log.info("McGraw Hill Connect opened from Moodle, on %s", _shape(url))
+            # the class page itself, or a single assignment (or Connect's own requests) naming its class
+            if (page := section_page(url)) and page not in self.sections:
+                self.sections.append(page)
+                log.info("Connect class found on the way in: %s", _shape(page))
 
     def look(self, ctx: BrowserContext) -> None:
         """The activity's name, from the Moodle tab it was opened on (Moodle titles pages "Course: Activity"); and once
@@ -346,6 +369,7 @@ def _note_js(moodle_host: str) -> str:
   const show = () => { if (document.getElementById('birdbrain-note')) return;
     const d = document.createElement('div'); d.id = 'birdbrain-note'; d.setAttribute('role', 'status');
     d.textContent = 'Birdbrain: open the course that uses McGraw Hill Connect and click any McGraw Hill link in it once. ' +
+      'If each link opens a single assignment, pick one you have already finished, never a timed quiz or exam. ' +
       'This window closes by itself when Connect opens.';
     d.style.cssText = 'position:fixed;z-index:2147483647;left:50%%;bottom:16px;transform:translateX(-50%%);max-width:min(640px,calc(100vw - 32px));' +
       'padding:12px 18px;border-radius:10px;background:#1C2230;color:#fff;font:600 15px/1.45 "Segoe UI",system-ui,sans-serif;' +
