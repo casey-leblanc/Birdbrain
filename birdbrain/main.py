@@ -21,9 +21,11 @@ if getattr(sys, "frozen", False):
 import logging
 import re
 import threading
+import time
 import webbrowser
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pystray
 from PIL import Image, ImageDraw, ImageFont
@@ -36,9 +38,11 @@ import theme
 from browser import NeedsLogin, interactive_login, open_context
 from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
                     migrate_old_data)
-from jev import Jev
+from jev import Jev, is_receipt
 from keyword_dialog import edit_keywords
 from moodle import Moodle
+from gradescope import Gradescope
+from mcgraw import McGraw
 from outlook import Outlook
 from report import write as write_report
 from server import ListServer
@@ -58,22 +62,99 @@ def squawk(sound: Path = SQUAWK) -> None:
         log.exception("Couldn't play %s", sound.name)
 SHOW_EVENT = "Local\\BirdbrainShowWindow"   # a second launch sets this to bring the window up
 
+# The browser's errors for an address that leads nowhere: no such site, nothing answering there, or not a site it trusts.
+_NO_SITE = re.compile(r"ERR_NAME_NOT_RESOLVED|ERR_ADDRESS_UNREACHABLE|ERR_CONNECTION_REFUSED|ERR_CERT_|ERR_SSL_PROTOCOL|"
+                      r"ERR_INVALID_URL|ERR_TOO_MANY_REDIRECTS")
+
+
+class Progress:
+    """How far a scan has got, for the list page's progress bar. Each site takes a share of the bar (a full Moodle scan,
+    which reads every course, a bigger one) and says how far through itself it is, and what it's reading, as it goes.
+    With no sites to share it out (an inbox scan, which can't know how many emails there are), the bar shows that
+    something is happening rather than how much is left."""
+
+    def __init__(self, sites: list[tuple[str, int]]):
+        self.sites, self.total = sites, sum(w for _, w in sites)
+        self.site, self.part, self.detail = (sites[0][0] if sites else ""), 0.0, ""
+
+    def at(self, site: str, part: float = 0.0, detail: str = "") -> None:
+        self.site, self.part, self.detail = site, min(max(part, 0.0), 1.0), detail
+
+    def view(self) -> dict:
+        """{"value": 0 to 1, or None when there's no telling, "text": "Scanning Moodle: CHEM 1212 (course 3 of 8)"}"""
+        text = f"Scanning {self.site}" + (f": {self.detail}" if self.detail else "")
+        before = 0
+        for name, weight in self.sites:
+            if name == self.site:
+                return {"value": round((before + weight * self.part) / self.total, 3), "text": text}
+            before += weight
+        return {"value": None, "text": text}
+
+
+def _and(names: list[str]) -> str:
+    """'Moodle', 'Moodle and Outlook', 'Moodle, Outlook and Gradescope'."""
+    return " and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _trouble(name: str, address: str, e: Exception) -> str:
+    """A failed scan in words the student can act on: a site that can't be reached is usually a mistyped address,
+    which Settings can change."""
+    if _NO_SITE.search(str(e)):
+        return f"Couldn't reach {name} at {urlparse(address).netloc or address}; check the address in Settings › Scanning"
+    return f"{name} scan failed (see log)"
+
+
+# The perched bird from the page's "all clear" drawing (report.PERCH), in its 96 x 60 drawing units: the body as
+# straight runs and cubic curves, the eye, and the two strokes of the wing.
+_BIRD = [(30, 40), ((32, 30), (40, 23), (50, 21)), ((51, 14), (56, 9), (62, 9)), ((67, 9), (70, 12), (71, 16)),
+         (77, 17.5), (71, 19.5), ((71, 29), (64, 39), (52, 42.5)), ((46, 44.5), (40, 44.5), (36, 43.5)), (18, 52), (15, 49.5)]
+_EYE = (64, 14.8, 1.6)
+_WING = [[(34, 36), ((40, 29), (48, 27), (55, 30))], [(37.5, 40), ((43, 36.5), (49, 35.5), (53.5, 37))]]
+
+
+def _trace(path: list) -> list[tuple[float, float]]:
+    """A path's points: a pair is a point to go to in a straight line, a triple is a cubic curve (two controls, end)."""
+    pts = [path[0]]
+    for step in path[1:]:
+        if isinstance(step[0], tuple):
+            (x0, y0), ((x1, y1), (x2, y2), (x3, y3)) = pts[-1], step
+            for i in range(1, 17):
+                t = i / 16
+                a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t ** 2, t ** 3
+                pts.append((a * x0 + b * x1 + c * x2 + d * x3, a * y0 + b * y1 + c * y2 + d * y3))
+        else:
+            pts.append(step)
+    return pts
+
 
 def make_icon(badge: int | None = None, size: int = 64) -> Image.Image:
-    """Tray/app icon: a bold "B" in the Birdbrain structure colour, with the
-    due-today count in the accent colour."""
+    """Tray/app icon: the perched bird in white on a Birdbrain-violet tile, with the due-today count in the accent colour
+    at the top left (over the empty space above the tail, so it never covers the bird). Drawn large and scaled down, so
+    every size is smooth; the wing's strokes only show at 48px and up, where they can be seen."""
     t = theme.THEMES["birdbrain"]["modes"]["light"]
-    s = size / 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    big = max(size, 16) * 8
+    s = big / 64
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle((2 * s, 2 * s, 62 * s, 62 * s), 12 * s, fill=t["struct"])
-    bold = theme.FONT_DIR / "AtkinsonHyperlegible-Bold.ttf"
-    d.text((32 * s, 33 * s), "B", fill="#FFFFFF", anchor="mm", font=ImageFont.truetype(str(bold), int(46 * s)))
+    # the bird's 15..77 by 9..52.5 fitted to 54 of the tile's 64 units; its weight is in the head and body, so it
+    # sits a little left of and above the middle of its outline to look centred
+    w = 54 / 62
+    k, ox, oy = w * s, 30.5 * s - 46 * w * s, 32 * s - 30.75 * w * s
+    at = lambda x, y: (ox + x * k, oy + y * k)
+    d.polygon([at(x, y) for x, y in _trace(_BIRD)], fill="#FFFFFF")
+    if size >= 24:   # smaller, the eye is a stray pixel
+        ex, ey, er = _EYE
+        d.ellipse((*at(ex - er * 1.2, ey - er * 1.2), *at(ex + er * 1.2, ey + er * 1.2)), fill=t["struct"])
+    if size >= 48:
+        for stroke in _WING:
+            d.line([at(x, y) for x, y in _trace(stroke)], fill=t["struct"], width=max(1, round(1.6 * k)), joint="curve")
     if badge:
-        d.ellipse((33 * s, 0, 64 * s, 31 * s), fill=t["accent"])
-        d.text((48.5 * s, 15.5 * s), str(min(badge, 9)), fill="#FFFFFF", anchor="mm",
+        bold = theme.FONT_DIR / "AtkinsonHyperlegible-Bold.ttf"
+        d.ellipse((0, 0, 31 * s, 31 * s), fill=t["accent"], outline="#FFFFFF", width=round(1.5 * s))
+        d.text((15.5 * s, 15.5 * s), str(min(badge, 9)), fill="#FFFFFF", anchor="mm",
                font=ImageFont.truetype(str(bold), int(22 * s)))
-    return img
+    return img.resize((size, size), Image.LANCZOS)
 
 
 class App:
@@ -81,6 +162,7 @@ class App:
         self.settings = Settings.load()
         self.store = Store()
         self.jev = Jev(self.settings)
+        self._drop_receipts()
         self.lock = threading.Lock()          # one browser session at a time
         self.wake = threading.Event()
         self.stop = threading.Event()
@@ -89,12 +171,19 @@ class App:
         self.last_sign_in_problems: list[str] = []
         self.problems: list[str] = []
         self.dialog_open = threading.Lock()   # one keyword window at a time
+        self._busy, self._busy_lock = 0, threading.Lock()   # scans running or about to (see scanning)
         self.scanning = False
+        self.progress: Progress | None = None  # how far the scan running now has got
+        self.signing_in = threading.Event()    # the sign-in window is open
+        self.signed: list[str] = []            # ...and, while it is, the sites signed in so far
+        self.waiting: list[str] = []           # ...and the ones it's still waiting on
+        self.early_scan = False                # the signed-in sites were read while the window was still open
         self.mail_since: date | None = None   # inbox scan requested from the list page
         self.inbox_scanning = False
         self.stop_mail = threading.Event()     # "Stop" on that scan: what it has already added stays
         self.server: ListServer | None = None
         self.window: appwindow.AppWindow | None = None
+        self.window_coming = threading.Event()   # set while the app window is being made
         self.set_up = threading.Event()        # the Moodle (and Outlook) addresses are known
         if self.settings.moodle_url:
             self.set_up.set()
@@ -105,14 +194,28 @@ class App:
             pystray.MenuItem("Full rescan of Moodle", self.on_full),
             pystray.MenuItem("Hide entries by keyword…", self.on_keywords),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Sign in to Moodle / Outlook…", self.on_login),
+            pystray.MenuItem("Sign in to your school sites…", self.on_login),
             pystray.MenuItem("Settings…", lambda: os.startfile(CONFIG_PATH)),
             pystray.MenuItem("Open log", lambda: os.startfile(LOG_PATH)),
             pystray.MenuItem("Quit", self.on_quit),
         ))
 
+    @property
+    def scanning(self) -> bool:
+        """A scan is running or about to. The loop's scan and an early one (while the sign-in window is open) can
+        overlap, so each start counts up and each end counts down, and one ending doesn't hide the other."""
+        return self._busy > 0
+
+    @scanning.setter
+    def scanning(self, on: bool) -> None:
+        with self._busy_lock:
+            self._busy = self._busy + 1 if on else max(self._busy - 1, 0)
+
     # --- menu actions -----------------------------------------------------------
     def on_show(self, *_):
+        if self.window_coming.is_set() and not self.window:   # a click while the window is still being made: wait for it
+            threading.Thread(target=self._show_once_made, daemon=True).start()
+            return
         if self.window:
             threading.Thread(target=self.window.show, daemon=True).start()   # waits for the window if it's starting
         elif self.server:
@@ -121,6 +224,27 @@ class App:
             path, _ = write_report(self.store, self.settings, self.status)
             webbrowser.open(f"file:///{path}")
 
+    def _drop_receipts(self) -> None:
+        """Earlier versions read some receipt emails as work due (Gradescope's "Successfully submitted to HW3" showed as
+        overdue). Take those off the list; the emails themselves are untouched, and they won't be read as work again."""
+        gone = [i for i in self.store.items_between(datetime(2000, 1, 1), datetime(2100, 1, 1))
+                if i.source == "outlook-mail" and is_receipt(f"{i.title} {i.detail}")]
+        for i in gone:
+            self.store.delete(i.id)
+        if gone:
+            log.info("Took %d receipt emails off the list", len(gone))
+
+    def _notify_soon(self, msg: str) -> None:
+        """A notification a moment after start, once the tray icon it comes from is showing."""
+        threading.Timer(3, self.notify, args=(msg, "Birdbrain")).start()
+
+    def _show_once_made(self) -> None:
+        deadline = time.monotonic() + 30
+        while self.window_coming.is_set() and not self.window and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.window_coming.clear()
+        self.on_show()
+
     # --- list page (served by server.ListServer) ---------------------------------
     def _render(self, token: str, board: bool = False, app_window: bool = False) -> str:
         now = datetime.now()
@@ -128,12 +252,14 @@ class App:
         saved = prefs.load(self.store)
         if not self.set_up.is_set() and not board:   # first run: ask for the addresses
             return report.render_setup(token, saved, app_window, self.settings.outlook_url)
+        p = self.progress.view() if self.progress else None
         if board:
-            return report.render_board(b, self.settings, self.status, now, self.store.version, saved)
-        return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window)
+            return report.render_board(b, self.settings, self.status, now, self.store.version, saved, progress=p)
+        return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window, progress=p)
 
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
+                "progress": self.progress.view() if self.progress else None, "signing_in": self.signing_in.is_set(),
                 "scanning": self.scanning or self.mail_since is not None,
                 "inbox": self.inbox_scanning or self.mail_since is not None}
 
@@ -170,9 +296,9 @@ class App:
 
     # --- the tray menu's actions, for the Settings sheet on the list page -------------
     def _page_actions(self) -> dict:
-        return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "keywords": self.api_keywords,
+        return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "sites": self.api_sites, "keywords": self.api_keywords,
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
-                "setup": self.api_setup}
+                "setup": self.api_setup, "addresses": self.api_addresses}
 
     def api_setup(self, body: dict) -> dict:
         """The welcome page. With "check", just tidy and check the addresses (step 1); otherwise save them and
@@ -183,6 +309,7 @@ class App:
         if body.get("check"):
             return {"ok": True, "moodle": moodle, "outlook": outlook}
         s.moodle_url = moodle
+        s.scan_gradescope, s.scan_mcgraw = bool(body.get("gradescope")), bool(body.get("mcgraw"))
         if outlook is None:
             s.scan_outlook_mail = s.scan_outlook_calendar = False
         else:
@@ -197,6 +324,38 @@ class App:
         self.set_up.set()
         return {"ok": True, "moodle": s.moodle_url}
 
+    def api_addresses(self, body: dict) -> dict:
+        """Settings > Scanning: change where Moodle and Outlook are (one mistyped at setup, say). A new address needs
+        signing in to, so the sign-in window opens for it, and the first scan of a new Moodle reads every course page."""
+        s = Settings.load()
+        moodle = clean_moodle_url(str(body.get("moodle", "")))
+        outlook = None if body.get("no_outlook") else clean_outlook_url(str(body.get("outlook", "")))
+        was_on = s.scan_outlook_mail or s.scan_outlook_calendar
+        new_moodle = moodle != s.moodle_url
+        new_outlook = outlook is not None and (outlook != s.outlook_url or not was_on)
+        outlook_off = outlook is None and was_on
+        if new_moodle:
+            s.moodle_url = moodle
+            if not all(u.startswith(moodle + "/") for u in (s.mcgraw_launch, s.mcgraw_course) if u):
+                s.mcgraw_launch = s.mcgraw_launch_name = s.mcgraw_course = ""   # the McGraw Hill link was on the old one
+        if outlook is None:
+            s.scan_outlook_mail = s.scan_outlook_calendar = False
+        else:
+            s.outlook_url = outlook
+            if not was_on:
+                s.scan_outlook_mail = s.scan_outlook_calendar = True
+        s.save()
+        self.settings = s
+        log.info("Addresses now: Moodle %s, Outlook %s", s.moodle_url, s.outlook_url if outlook else "off")
+        if new_moodle:
+            self.force_full = True
+        if new_moodle or new_outlook:
+            self.on_login()
+        elif outlook_off:
+            self.wake.set()
+        return {"ok": True, "moodle": s.moodle_url, "outlook": outlook, "sign_in": new_moodle or new_outlook,
+                "outlook_off": outlook_off}
+
     def api_sound(self, body: dict) -> dict:
         squawk()   # "Play the squawk" in Settings
         return {"ok": True}
@@ -208,10 +367,20 @@ class App:
         return {"ok": True}
 
     def api_scan(self, body: dict) -> dict:
+        """Scan now, or a full rescan of Moodle. "state" says what happened: "started"; "running" (a scan already is,
+        so another isn't queued behind it); "queued" (a full rescan, once the running scan ends); while the sign-in
+        window is open, "early" (what's signed in so far is being read) or "signing-in" (nothing is signed in yet)."""
         if body.get("full"):
             self.force_full = True
+            self.wake.set()
+            return {"ok": True, "state": "queued" if self.scanning else "started"}
+        if self.scanning:
+            return {"ok": True, "state": "running"}
+        if self.signing_in.is_set():
+            self.early_scan = False   # asked for: read whatever is signed in now, even if that was done once already
+            return {"ok": True, "state": "early" if self._scan_signed_in() else "signing-in"}
         self.wake.set()
-        return {"ok": True}
+        return {"ok": True, "state": "started"}
 
     def api_scan_stop(self, body: dict) -> dict:
         """Stop the older-emails scan: a queued one never starts; a running one ends where it is, and what it has
@@ -221,6 +390,20 @@ class App:
             self._set_status("Inbox scan cancelled.")
         self.stop_mail.set()
         return {"ok": True}
+
+    def api_sites(self, body: dict) -> dict:
+        """Settings > Scanning: whether to read Gradescope and McGraw Hill Connect too."""
+        s = Settings.load()
+        for key, name in (("gradescope", "scan_gradescope"), ("mcgraw", "scan_mcgraw"), ("mcgraw_auto_renew", "mcgraw_auto_renew")):
+            if key in body:
+                setattr(s, name, bool(body[key]))
+        if body.get("mcgraw_via") in ("moodle", "direct"):
+            s.mcgraw_via = body["mcgraw_via"]
+        s.save()
+        self.settings = s
+        log.info("Other sites: Gradescope %s, McGraw Hill Connect %s", s.scan_gradescope, s.scan_mcgraw)
+        return {"ok": True, "gradescope": s.scan_gradescope, "mcgraw": s.scan_mcgraw, "mcgraw_via": s.mcgraw_via,
+                "mcgraw_auto_renew": s.mcgraw_auto_renew}
 
     def api_sign_in(self, body: dict) -> dict:
         self.on_login()
@@ -263,11 +446,66 @@ class App:
 
     def on_login(self, *_):
         def run():
-            with self.lock:
-                interactive_login(self.settings)
-            self.store.set_meta("login_done", "1")
+            self._sign_in()
             self.wake.set()
         threading.Thread(target=run, daemon=True).start()
+
+    def _sign_in(self) -> None:
+        """The sign-in window; then, if a site couldn't even be opened, say which, and where to change its address.
+        The window failing outright is logged, and scanning carries on (it says what's wrong in its own words).
+        Scans may run while it's open: it saves each sign-in as it happens, and a scan leaves that newer session be."""
+        if self.signing_in.is_set():   # one window at a time: they share a browser profile
+            return
+        self.signing_in.set()
+        self.signed, self.waiting, self.early_scan = [], [], False
+        self._set_status(self._before_first_scan() + "Opening the sign-in window…")
+        try:
+            missed = interactive_login(self.settings, on_change=self._sign_in_changed)
+        except Exception:
+            log.exception("The sign-in window failed")
+            missed = []
+        finally:
+            self.signing_in.clear()
+            self.signed, self.waiting = [], []
+        self.store.set_meta("login_done", "1")
+        if missed:
+            what = _and(missed)
+            self._set_status(f"Couldn't reach {what}; check the address in Settings › Scanning.")
+            self.notify("If the address is wrong, change it in Settings › Scanning.", f"Couldn't reach {what}")
+
+    def _before_first_scan(self) -> str:
+        """The start of the status line until the first scan is done (the page keeps its counts hidden until then)."""
+        return "" if self.store.get_meta("first_scan_done") == "1" else "Not scanned yet. "
+
+    def _sign_in_changed(self, signed: list[str], waiting: list[str]) -> None:
+        """News from the sign-in window: the sites signed in so far and the ones it's still waiting on. Once Moodle and
+        Outlook are in, they're read straight away, not when the window closes (it may wait on another site a while)."""
+        self.signed, self.waiting = signed, waiting
+        if waiting and not self.scanning:
+            done = f"Signed in to {_and(signed)}. " if signed else ""
+            self._set_status(f"{self._before_first_scan()}{done}Waiting for you to sign in to {_and(waiting)}.")
+        if waiting and not self.early_scan and not any(core in waiting for core in ("Moodle", "Outlook")) and \
+                any(core in signed for core in ("Moodle", "Outlook")):
+            self._scan_signed_in()
+
+    def _scan_signed_in(self) -> bool:
+        """While the sign-in window is still open, read the sites already signed in to, in the background. False if
+        there's nothing signed in yet, or a scan is already running."""
+        ready = tuple(self.signed)
+        if not ready or self.scanning or self.early_scan:
+            return False
+        self.early_scan = self.scanning = True
+
+        def run():
+            try:
+                self.scan(only=ready)
+            except Exception:
+                log.exception("Scan crashed")
+                self._set_status("Last scan failed (see log)")
+            finally:
+                self.scanning = False
+        threading.Thread(target=run, daemon=True, name="early-scan").start()
+        return True
 
     def on_keywords(self, *_):
         if self.dialog_open.locked():
@@ -310,11 +548,16 @@ class App:
         self._set_status(f"Scanning inbox back to {label}…")
         new, problem = [], ""
 
+        mine = Progress([])   # there's no telling how many emails there are: a bar that shows it's working
+        mine.at(f"your inbox back to {label}")
+
         def progress(n: int) -> None:
             self._set_status(f"Scanning inbox back to {label}… {n} emails read")
+            mine.at(f"your inbox back to {label}", detail=f"{n} emails read")
         self.inbox_scanning = True
         try:
             with self.lock, open_context(self.settings) as ctx:
+                self.progress = mine
                 new = Outlook(self.settings, self.store, self.jev).scan_mail_since(
                     ctx, since, progress=progress, stop=self.stop_mail.is_set)
         except NeedsLogin as e:
@@ -325,6 +568,8 @@ class App:
             problem = "Inbox scan failed (see log)"
         finally:
             self.inbox_scanning = False
+            if self.progress is mine:
+                self.progress = None
         new, _ = filters.split(new, self.settings.hidden_keywords,
                                pool=report.window(self.store, self.settings, datetime.now()))
         updated = datetime.now().strftime("%I:%M %p").lstrip("0")
@@ -338,46 +583,62 @@ class App:
         self.stop_mail.clear()
         self._refresh_view()
         if problem and "sign-in" in problem:
-            self.notify("Choose 'Sign in to Moodle / Outlook…' from the tray menu.", problem)
+            self.notify("Choose 'Sign in to your school sites…' from the tray menu.", problem)
 
-    def scan(self) -> None:
-        self.settings = Settings.load()   # pick up edits made via "Settings…"
+    def scan(self, only: tuple[str, ...] | None = None) -> None:
+        """Read every site the student uses, or just `only` these (the ones already signed in, while the sign-in window
+        is still open for another). Says how far it has got as it goes, for the list page's progress bar."""
+        self.settings = s = Settings.load()   # pick up edits made via "Settings…"
         full = self.force_full or self.store.get_meta("first_scan_done") != "1"
-        self.force_full = False
+        sites = [(name, weight) for name, on, weight in (
+            ("Moodle", bool(s.moodle_url), 4 if full else 1),   # a full scan reads every course: the longest part
+            ("Outlook", s.scan_outlook_mail or s.scan_outlook_calendar, 1),
+            ("Gradescope", s.scan_gradescope, 1),
+            ("McGraw Hill Connect", s.scan_mcgraw, 1)) if on and (only is None or name in only)]
+        full = full and any(name == "Moodle" for name, _ in sites)
+        if full or only is None:
+            self.force_full = False
         new, problems = [], []
-        self._set_status("Full Moodle scan in progress…" if full else "Scanning…")
-        with self.lock, open_context(self.settings) as ctx:
-            if self.settings.moodle_url:
-                try:
-                    new += Moodle(self.settings, self.store, self.jev).scan(ctx, full=full)
-                    if full:
-                        self.store.set_meta("first_scan_done", "1")
-                except NeedsLogin as e:
-                    log.warning("%s", e)
-                    problems.append("Moodle needs sign-in")
-                except Exception:
-                    log.exception("Moodle scan failed")
-                    problems.append("Moodle scan failed (see log)")
-            if self.settings.scan_outlook_mail or self.settings.scan_outlook_calendar:
-                try:
-                    new += Outlook(self.settings, self.store, self.jev).scan(ctx)
-                except NeedsLogin as e:
-                    log.warning("%s", e)
-                    problems.append("Outlook needs sign-in")
-                except Exception:
-                    log.exception("Outlook scan failed")
-                    problems.append("Outlook scan failed (see log)")
+        step = lambda name: (lambda part=0.0, detail="": self.progress and self.progress.at(name, part, detail))
+        address = {"Moodle": s.moodle_url, "Outlook": s.outlook_url}
+        with self.lock:   # after any scan already running, which keeps its own progress until it ends
+            self._set_status("Full Moodle scan in progress…" if full else "Scanning…")
+            self.progress = Progress(sites)
+            try:
+                with open_context(s) as ctx:
+                    for name, _ in sites:
+                        self.progress.at(name)
+                        try:
+                            if name == "Moodle":
+                                new += Moodle(s, self.store, self.jev).scan(ctx, full=full, progress=step(name))
+                                if full:
+                                    self.store.set_meta("first_scan_done", "1")
+                            elif name == "Outlook":
+                                new += Outlook(s, self.store, self.jev).scan(ctx, progress=step(name))
+                            elif name == "Gradescope":
+                                new += Gradescope(s, self.store).scan(ctx)
+                            else:
+                                new += McGraw(s, self.store).scan(ctx, progress=step(name))
+                        except NeedsLogin as e:
+                            log.warning("%s", e)
+                            problems.append(f"{name} needs sign-in")
+                        except Exception as e:
+                            log.exception("%s scan failed", name)
+                            problems.append(_trouble(name, address[name], e) if name in address else f"{name} scan failed (see log)")
+            finally:
+                self.progress = None
 
         # Keyword matching is the normal case, so only say when Jev did the reading.
         jev = " Read by Jev." if self.jev.online else ""
         updated = datetime.now().strftime("%I:%M %p").lstrip("0")
-        self.status = f"Updated {updated}.{jev}" + (f" {'; '.join(problems)}." if problems else "")
+        waiting = f" Waiting for you to sign in to {_and(self.waiting)}." if self.signing_in.is_set() and self.waiting else ""
+        self.status = f"Updated {updated}.{jev}" + (f" {'; '.join(problems)}." if problems else "") + waiting
         self.problems = problems
         due_today = self._refresh_view()
 
         needs = [p for p in problems if "sign-in" in p]
-        if needs and needs != self.last_sign_in_problems:  # tell once, not every scan
-            self.notify("Choose 'Sign in to Moodle / Outlook…' from the tray menu.", "; ".join(needs))
+        if needs and needs != self.last_sign_in_problems and not self.signing_in.is_set():  # tell once, not every scan
+            self.notify("Choose 'Sign in to your school sites…' from the tray menu.", "; ".join(needs))
         self.last_sign_in_problems = needs
         # Don't announce duplicates or keyword-hidden entries.
         new, _ = filters.split(new, self.settings.hidden_keywords,
@@ -416,11 +677,9 @@ class App:
                 if self.stop.is_set():
                     return
         if self.store.get_meta("login_done") != "1" or not STATE_PATH.exists():
-            self.notify("Sign in to Moodle and Outlook in the window that opens. "
+            self.notify("Sign in to your school sites in the window that opens. "
                         "It closes by itself once you're signed in.")
-            with self.lock:
-                interactive_login(self.settings)
-            self.store.set_meta("login_done", "1")
+            self._sign_in()
         while not self.stop.is_set():
             self.scanning = True
             since = self.mail_since
@@ -452,15 +711,22 @@ class App:
         threading.Thread(target=self.loop, daemon=True, name="scans").start()
         threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
                          daemon=True, name="tray").start()
+        if self.server:
+            self.window_coming.set()
         if self.server and appwindow.available():
             try:
                 self.window = appwindow.AppWindow(self.server.url, icon_path=_window_icon())
+                self.window_coming.clear()
                 self.window.run(show=show)   # returns once Birdbrain quits
             except Exception:
                 log.exception("The app window failed; the list opens in the browser instead")
+                self._notify_soon("Birdbrain's own window couldn't start, so your list opens in your browser. The log says why.")
             if self.stop.is_set():
                 return
             self.window = None
+        elif self.server:
+            self._notify_soon(appwindow.problem)
+        self.window_coming.clear()
         if show:
             self.on_show()
         self.stop.wait()
@@ -486,10 +752,16 @@ def _window_icon() -> str | None:
     """The packaged app's window takes Birdbrain.exe's icon; from source, give it the same one."""
     if getattr(sys, "frozen", False):
         return None
-    path = DATA_DIR / "birdbrain.ico"
+    path = DATA_DIR / "birdbrain-bird.ico"
     if not path.exists():
-        make_icon(size=256).save(path, sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+        save_icon(path, (16, 32, 48, 256))
     return str(path)
+
+
+def save_icon(path: Path, sizes: tuple[int, ...]) -> None:
+    """A Windows icon file with each size drawn at that size (so the small ones get their own detail rules)."""
+    images = [make_icon(size=n) for n in sorted(sizes, reverse=True)]
+    images[0].save(path, format="ICO", sizes=[(n, n) for n in sizes], append_images=images[1:])
 
 
 def show_running_copy() -> bool:

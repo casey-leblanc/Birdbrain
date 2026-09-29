@@ -1,6 +1,6 @@
 """The Glass layout (the default), modelled on caseyleblanc.dev.
 
-One frosted panel floats over a photo and holds everything: a header row
+One frosted panel floats over the open sky and holds everything: a header row
 (today, the title, the buttons), a slim strip naming the next exam and quiz,
 then Now / This week / Later as three glass columns, laid out like the site's
 blog (a wider middle column). Items sit clear on the column's glass and only
@@ -43,9 +43,11 @@ SCHEMES = {
     "birdbrain": dict(name="Birdbrain", common=dict(title="#DDD5FF", lav="#D9D0FF", lav_ink="#21173F", focus="#FFFFFF"),
                       light=dict(glass="rgba(42,34,74,.74)", sheet="rgba(36,30,64,.92)", bg="#9C8BC9"),
                       dark=dict(glass="rgba(26,20,50,.66)", sheet="rgba(24,20,46,.92)", bg="#2A2150")),
-    "night": dict(name="Cozy", common=dict(title="#CDEBE2", lav="#A8E6D8", lav_ink="#0F2A24", focus="#FFD28A"),
-                  light=dict(glass="rgba(20,38,32,.76)", sheet="rgba(20,36,30,.92)", bg="#6E8F4E"),
-                  dark=dict(glass="rgba(12,24,20,.66)", sheet="rgba(12,24,20,.92)", bg="#10170F")),
+    # Cloudy: towering cumulus by day, a sea of clouds under the moon by night; pale white where Cozy was green.
+    # The glass is a neutral cool slate, as dark as each photo's brightest clouds need (the Measured Glass Rule).
+    "cloudy": dict(name="Cloudy", common=dict(title="#F2F5F9", lav="#EEF2F7", lav_ink="#1B2430", focus="#FFFFFF"),
+                   light=dict(glass="rgba(32,40,54,.76)", sheet="rgba(29,36,49,.92)", bg="#5E7FA6"),
+                   dark=dict(glass="rgba(18,26,42,.66)", sheet="rgba(16,23,38,.92)", bg="#12306A")),
     "contrast": dict(name="High contrast", common=dict(title="#FFFFFF", lav="#7FE0FF", lav_ink="#000000", focus="#FFE14D",
                                  t2="#FFFFFF", edge="#FFFFFF", line="rgba(255,255,255,.55)"),
                      light=dict(glass="rgba(0,0,0,.86)", sheet="rgba(0,0,0,.95)", bg="#BDBDBD"),
@@ -126,6 +128,7 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 h1{grid-column:2;grid-row:1;justify-self:center;align-self:center;font-size:1.75rem;font-weight:700;line-height:1.1;letter-spacing:.01em;color:var(--g-title);text-transform:lowercase}
 .status{grid-column:1/-1;grid-row:2;justify-self:center;text-align:center;max-width:60ch;margin-top:-16px;font-size:.8125rem;color:var(--g-t2)}
 .status.problem{background:var(--g-red);color:var(--g-ink);font-weight:700;padding:2px 10px;border-radius:6px}
+.status{--bar-track:rgba(255,255,255,.22);--bar-fill:rgba(255,255,255,.92)}
 .actions{grid-column:3;grid-row:1;justify-self:end;align-self:center;display:flex;gap:8px}
 .today{grid-column:1;grid-row:1;align-self:center;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
 /* next exam and next quiz: side by side, or one line across when alone */
@@ -232,6 +235,9 @@ a.t:hover{text-decoration-style:solid;text-decoration-color:currentColor}
 .row:hover .act.arch,.row:focus-within .act.arch{opacity:1}
 @media (hover:none){.act.arch{opacity:1}}
 .kw-msg:empty{display:none}
+.sub-options{margin:4px 0 8px 28px;padding-left:16px;border-left:1px solid var(--g-line)}
+.sub-options .field{margin-bottom:4px}
+.warn-note{color:var(--g-t1);max-width:36rem}
 /* the shortcut list: each key a small glass cap */
 kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.8125rem;font-weight:700;line-height:1.6;text-align:center;
  color:var(--g-t1);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.4);border-radius:5px}
@@ -292,7 +298,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 
 /* completed + archived: collapsible glass panels */
 .bins{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px;align-items:start}
-.bin[open]{grid-column:1/-1}   /* closed bins share a row; an open one takes the width its items need */
+/* each bin opens in place, in its own column, so opening one never moves the other */
 .bin{padding:16px 24px}
 .bin summary{position:relative;list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;cursor:pointer;width:fit-content;min-height:44px}
 .bin summary::-webkit-details-marker{display:none}

@@ -23,11 +23,37 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import sys
 import threading
 import time
 from ctypes import wintypes
+from pathlib import Path
 
 log = logging.getLogger(__name__)
+problem = ""   # why the window can't be made here, in plain words, once check() has failed
+
+
+def unblock_own_files() -> int:
+    """A zip downloaded from the internet marks every file in it as downloaded (the Mark of the Web), and .NET then
+    refuses to load the window's libraries (Python.Runtime.dll), so the list would open in the browser instead. The
+    student already chose to run Birdbrain, so take the mark off its own files, as Windows' "Unblock" would. Only the
+    packaged app does this, and only in its own folder. Returns how many files it cleared."""
+    if not getattr(sys, "frozen", False):
+        return 0
+    base = Path(sys.executable).parent
+    marked = lambda p: os.path.exists(f"{p}:Zone.Identifier")
+    if not (marked(sys.executable) or marked(base / "_internal" / "pythonnet" / "runtime" / "Python.Runtime.dll")):
+        return 0
+    cleared = 0
+    for p in (Path(sys.executable), *base.rglob("*")):
+        try:
+            if p.is_file() and marked(p):
+                os.remove(f"{p}:Zone.Identifier")
+                cleared += 1
+        except OSError:
+            pass
+    log.info("Cleared the downloaded-file mark from %d of Birdbrain's own files", cleared)
+    return cleared
 
 # --- Win32 --------------------------------------------------------------------------
 _u32 = ctypes.WinDLL("user32")
@@ -150,6 +176,7 @@ class Bridge:
 # --- the window -------------------------------------------------------------------------
 def check() -> str:
     """Raises if the window can't be made here; otherwise says what it will use."""
+    unblock_own_files()   # before .NET loads anything
     import webview   # noqa: F401  (the library)
     from webview.platforms import winforms   # loads the .NET bridge and Windows Forms
     if not winforms._is_chromium():
@@ -158,11 +185,15 @@ def check() -> str:
 
 
 def available() -> bool:
+    global problem
     try:
         check()
         return True
-    except Exception:
+    except Exception as e:
         log.exception("No app window available; the list will open in the browser")
+        problem = ("Birdbrain's own window needs the Microsoft Edge WebView2 Runtime, which isn't installed. It's free "
+                   "from Microsoft; until then your list opens in your browser." if "WebView2" in str(e) else
+                   "Birdbrain's own window couldn't start, so your list opens in your browser. The log says why.")
         return False
 
 

@@ -20,7 +20,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-VERSION = "1.0.7"
+VERSION = "1.1.2"
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "birdbrain"
 WORK = Path(os.environ["LOCALAPPDATA"]) / "Birdbrain-build"
@@ -30,7 +30,7 @@ OUT = ROOT / "dist"
 def make_icon(path: Path) -> None:
     sys.path.insert(0, str(SRC))
     import main   # the same icon the tray shows
-    main.make_icon(size=256).save(path, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    main.save_icon(path, (16, 24, 32, 48, 64, 128, 256))   # each size drawn at that size, not shrunk from the biggest
 
 
 def version_file(path: Path) -> None:

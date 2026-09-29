@@ -104,11 +104,10 @@ THEMES = {
     "dusk": dict(name="Dusk", modes=dict(
         light=_t("#F6ECEF", "#FDF8FA", "#EDDFE5", "#DCC6D0", "#221C33", "#3C3A8C", "#5B546B", "#A8335A", "#FFFFFF", "#3C3A8C", head="#2B2552"),
         dark=_t("#1A1830", "#211F3A", "#2A2747", "#3D3964", "#EEE7F4", "#8FCBE8", "#B3ABC8", "#F28FA6", "#1A1830", "#F5B38A"))),
-    # Cozy: linen and pine by day; by night a cabin, pine-dark with lamplight amber.
-    "night": dict(name="Cozy", modes=dict(
-        light=_t("#F2EDE3", "#FBF8F2", "#E8E1D3", "#D5CAB6", "#2A1F16", "#2E5A4C", "#5C5043", "#9A3F0B", "#FFFFFF", "#2E5A4C"),
-        dark=_t("#15201B", "#1B2822", "#22312A", "#2F4238", "#EDE6D8", "#E3B26A", "#AEB3A5", "#FF9E7A", "#15201B", "#E3B26A"))),
-    # Sunrise: butter and burnt gold, warm and bright.
+    # Cloudy: pale cloud-white and soft sky slate by day; an overcast night, pale white on grey-blue, by night.
+    "cloudy": dict(name="Cloudy", modes=dict(
+        light=_t("#F3F5F8", "#FFFFFF", "#E7EBF0", "#D3DAE3", "#1A2230", "#3B5878", "#545E6C", "#B42318", "#FFFFFF", "#3B5878"),
+        dark=_t("#161B24", "#1C222C", "#232A36", "#343D4B", "#EEF1F5", "#D2DDEA", "#A6AFBB", "#FF8F7E", "#161B24", "#D2DDEA"))),
     "sunrise": dict(name="Sunrise", modes=dict(
         light=_t("#FBF3DC", "#FFFBEF", "#F3E8C8", "#E3D3A4", "#2B2110", "#7A4E00", "#65573A", "#B42318", "#FFFFFF", "#7A4E00"),
         dark=_t("#1C1810", "#242016", "#2D281C", "#453C28", "#F5EBD2", "#FFC857", "#BDB08F", "#FF8A70", "#1C1810", "#FFC857"))),
@@ -118,7 +117,7 @@ THEMES = {
 }
 DEFAULT_THEME, DEFAULT_MODE = "forest", "light"
 MODES = ("dark", "light", "system")
-# The list page's layout: "glass" (frosted panels over a photo, glass.py) or "focus" (a flat, roomy page,
+# The list page's layout: "glass" (frosted panels overlooking the open sky, glass.py) or "focus" (a flat, roomy page,
 # report.py). Each has its own themes: glass.SCHEMES and THEMES above. "custom" is the student's own, in both.
 LAYOUTS = ("glass", "focus")
 LAYOUT_NAMES = {"glass": "Glass", "focus": "Focus"}
