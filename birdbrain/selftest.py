@@ -39,7 +39,9 @@ def run(out: Path) -> int:
     store.upsert(Item("moodle:cm:2", "moodle", "assignment", "Lab report", now - timedelta(days=1), "CHEM 1212"))
     page = lambda t: report.render(report.build(store, s), s, "Self-test", datetime.now(), t, store.version,
                                    prefs.load(store))
-    srv = ListServer(store, render_page=page, render_board=lambda t: "", status=lambda: {"version": 0},
+    board = lambda t: report.render_board(report.build(store, s), s, "Self-test", datetime.now(), store.version, prefs.load(store))
+    srv = ListServer(store, render_page=page, render_board=board,
+                     status=lambda: {"version": store.version, "status": "Self-test", "scanning": False, "progress": None},
                      request_mail_scan=lambda d: None, on_change=lambda: None)
     srv.start()
 

@@ -404,22 +404,39 @@ def _bins(b: Board, settings: Settings, now: datetime, courses: dict, opened: di
     return f'<div class="bins">{out}</div>' if out else ""
 
 
+def _scan_bar(progress: dict | None) -> str:
+    """Beside the status line while a scan runs: how far it has got, or, when there's no telling (an inbox scan), a bar
+    that shows it's working. Its words are the status line's, so it isn't read out on its own as it moves."""
+    if not progress:
+        return ""
+    v = progress.get("value")
+    amount = f' aria-valuenow="{round(v * 100)}"' if v is not None else ""
+    return (f'<span class="scan-bar{"" if v is not None else " busy"}" role="progressbar" aria-label="Scan progress" '
+            f'aria-valuemin="0" aria-valuemax="100"{amount} aria-valuetext="{e(progress["text"])}"><i style="--p:{v or 0}"></i></span>')
+
+
 def render_board(b: Board, settings: Settings, status: str, now: datetime, version: int = 0,
-                 prefs: dict | None = None) -> str:
-    """Everything inside the page wrapper; the live page swaps this in after a change."""
+                 prefs: dict | None = None, progress: dict | None = None) -> str:
+    """Everything inside the page wrapper; the live page swaps this in after a change. `progress` is the scan running
+    now, if one is: what it's reading and how far it has got, shown in place of the status line."""
     prefs = prefs or prefs_mod.DEFAULTS
     courses = prefs["courses"]
-    warn = any(w in status.lower() for w in ("sign-in", "failed", "couldn't reach"))
+    warn = not progress and any(w in status.lower() for w in ("needs sign-in", "failed", "couldn't reach"))
+    # Scan now, beside Add item and Settings; while a scan runs it says so (and a click just says it's already scanning)
+    scan_button = ('<button id="scan-top" class="act" type="button" aria-keyshortcuts="R" title="Scan now (R)"'
+                   + (' aria-disabled="true">Scanning…' if progress else '>Scan now') + '</button>')
     # An empty list isn't "all clear" until a scan has looked (the first scan is always a full one).
     scanned = not status.lower().startswith(("not scanned", "full moodle scan"))
     return "".join([
         '<header class="top">',
         '<h1>Birdbrain</h1>',
-        f'<p class="status{" problem" if warn else ""}">{e(status)}</p>',
+        f'<p class="status{" problem" if warn else ""}"><span class="st">{e(progress["text"] if progress else status)}</span>'
+        f'{_scan_bar(progress)}</p>',
         # the counts wait for the first scan: "0 overdue" before anything has been read would be a false all clear
         f'<div class="today"><h2 class="date">{now:%A, %B} {now.day}</h2>'
         + (f'<p class="counts">{_counts(b)}</p>' if scanned else "") + '</div>',
         '<nav class="actions needs-app" aria-label="Actions">',
+        scan_button,
         '<button id="open-add" class="act strong" type="button" aria-haspopup="dialog" aria-keyshortcuts="N" '
         'title="Add item (N)">Add item</button>',
         '<button id="open-settings" class="act" type="button" aria-haspopup="dialog" aria-keyshortcuts="S" '
@@ -719,7 +736,7 @@ def _grounds(p: dict) -> dict:
 
 
 def render(b: Board, settings: Settings, status: str, now: datetime, token: str = "", version: int = 0,
-           prefs: dict | None = None, app_window: bool = False) -> str:
+           prefs: dict | None = None, app_window: bool = False, progress: dict | None = None) -> str:
     prefs = prefs or prefs_mod.DEFAULTS
     mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
     # "Match system" is resolved in the browser before the first paint.
@@ -746,7 +763,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f"{TITLEBAR_CSS}{SCROLL_CSS}{MOTION_CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
-        render_board(b, settings, status, now, version, prefs),
+        render_board(b, settings, status, now, version, prefs, progress),
         f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs)}{_item_dialog(b, now)}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
@@ -1170,6 +1187,16 @@ TITLEBAR_CSS = """
 """
 
 MOTION_CSS = """
+/* the scan's progress, beside the status line: a slim track that fills as the scan goes; one that can't tell how far
+   it has got (an inbox scan) sends a short band along it instead. Each layout sets its colours. */
+.scan-bar{display:inline-block;vertical-align:middle;width:min(160px,32vw);height:6px;margin-left:10px;border-radius:3px;overflow:hidden;
+ background:var(--bar-track,color-mix(in srgb,var(--struct) 20%,transparent))}
+.scan-bar i{display:block;height:100%;width:calc(var(--p,0) * 100%);border-radius:inherit;background:var(--bar-fill,var(--struct));
+ transition:width .6s cubic-bezier(.4,0,.2,1)}
+.scan-bar.busy i{width:35%;animation:scan-busy 1.4s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes scan-busy{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+.actions .act[aria-disabled=true]{opacity:.62;cursor:default}
+@media (prefers-reduced-motion:reduce){.scan-bar i{transition:none}.scan-bar.busy i{animation:none;width:100%;opacity:.45}}
 /* motion shared by both layouts: sheets closing, and the veil a layout switch crossfades through */
 .sheet-dialog[open]::backdrop{animation:veil-in .2s ease-out}
 .sheet-dialog[open].closing{animation:sheet-out .16s cubic-bezier(.4,0,1,1) forwards}
@@ -1405,11 +1432,13 @@ function restoreFocus(f){if(!f)return;var el=null;
   if(el)el.focus();}
 /* The status line is rebuilt too, so a new problem (not just a new "Updated" time) is read out from a region that stays. */
 function problemText(){var p=wrap.querySelector('.status.problem');return p?p.textContent.replace(/^Updated [^.]*\\.\\s*/,''):'';}
-function refreshBoard(focus,opts){var f=focus||focusTarget(),was=problemText(),o=opts||{};
+var said=null;   /* the problem last read out (a scan's progress replaces it on screen for a while) */
+function refreshBoard(focus,opts){var f=focus||focusTarget(),o=opts||{};if(said===null)said=problemText();
   return fetch('/board?token='+encodeURIComponent(TOKEN)).then(function(r){
     if(!r.ok)throw new Error(GONE);return r.text();})
   .then(function(h){wrap.innerHTML=h;bindBoard();if(o.glide)glide(o.glide,o.skip);restoreFocus(f);
-    var p=problemText();if(p&&p!==was)document.getElementById('announce').textContent=wrap.querySelector('.status').textContent;});
+    var p=problemText();if(p&&p!==said)document.getElementById('announce').textContent=wrap.querySelector('.status').textContent;
+    said=p;lastRefresh=Date.now();});
 }
 /* the row after this one in its column or bin (focus moves there when this one leaves); if it was the last there, the
    nearest one anywhere on the page, so focus is never dropped */
@@ -1646,6 +1675,8 @@ function bindBoard(){
   if(gear)gear.addEventListener('click',function(){openSettings();});
   var add=document.getElementById('open-add');
   if(add)add.addEventListener('click',function(){openItemForm(null,null);});
+  var scanTop=document.getElementById('scan-top');
+  if(scanTop)scanTop.addEventListener('click',scanNow);   /* while a scan runs it just says so */
 }
 
 /* --- dialogs ------------------------------------------------------------ */
@@ -1656,8 +1687,44 @@ function openSettings(tab,part){syncCourseInputs();settings.showModal();
   if(t)showTab(t);else t=settings.querySelector('[role=tab][aria-selected=true]');
   var p=part&&document.getElementById(part);if(p&&!p.closest('[hidden]'))p.scrollIntoView({block:'start'});
   if(t)t.focus();}
-function scanNow(){api('/api/scan').then(function(){toast('Scanning now. Your list updates when it\u2019s done.');})
+/* What Scan now did: started one, or found one already running (it isn't queued behind it), or, while the sign-in
+   window is open, read what's signed in so far (or nothing, if nothing is yet). */
+function scanWords(state,full){return {
+  started:full?'Full Moodle scan starting. This can take a few minutes.':'Scanning now. Your list updates as it goes.',
+  running:'Already scanning. Your list updates when it’s done.',
+  queued:'The full rescan starts as soon as the scan running now ends.',
+  early:'Scanning what you’ve signed in to so far.',
+  'signing-in':'Finish signing in, in the sign-in window. Birdbrain scans as soon as you’re signed in.'}[state]||'Scanning now.';}
+function scanNow(){api('/api/scan').then(function(r){toast(scanWords(r.state));fastUntil=Date.now()+6000;watchStatus();})
   .catch(function(e){toast("Couldn't start a scan: "+e.message);});}
+/* The status line, live: while Birdbrain scans (or waits on the sign-in window) it's asked every second and a half, and
+   the line says what's being read, with a bar for how far the scan has got; otherwise every 5 seconds (not at all
+   while the window is hidden), and every second and a half just after you ask for a scan, until it has started. The
+   list is rebuilt when there's something new, as a scan goes and when it ends, but never while you're in the middle
+   of something: then as soon as you aren't. */
+var pollT=0,wasBusy=false,stale=false,lastRefresh=0,fastUntil=0;
+function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
+  var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar'),b=document.getElementById('scan-top');
+  if(t&&typeof text==='string'&&t.textContent!==text)t.textContent=text;
+  if(b){b.textContent=p?'Scanning…':'Scan now';if(p)b.setAttribute('aria-disabled','true');else b.removeAttribute('aria-disabled');}
+  if(!p){if(bar)bar.remove();return;}
+  st.classList.remove('problem');   /* the last scan's problem, if any, comes back with the rebuilt list if it's still one */
+  if(!bar){bar=document.createElement('span');bar.className='scan-bar';bar.setAttribute('role','progressbar');
+    bar.setAttribute('aria-label','Scan progress');bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');
+    bar.appendChild(document.createElement('i'));st.appendChild(bar);}
+  var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
+  if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
+  else bar.removeAttribute('aria-valuenow');}
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||document.querySelector('.row.leaving'))return false;
+  var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
+function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
+  if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
+  status().then(function(s){paintStatus(s);
+    var busy=!!(s.scanning||s.inbox||s.signing_in);
+    if((wasBusy&&!busy)||String(s.version)!==version())stale=true;
+    if(stale&&canRefresh()&&(!busy||Date.now()-lastRefresh>8000)){stale=false;refreshBoard();}
+    wasBusy=busy;pollT=setTimeout(watchStatus,busy||Date.now()<fastUntil?1500:5000);})
+  .catch(function(){pollT=setTimeout(watchStatus,20000);});}
 /* Single-key shortcuts (N, S, R, ?): only while no window is open and you aren't typing, and never with Ctrl or Alt */
 var SHORTCUTS={n:function(){if(LIVE)openItemForm(null,null);},s:function(){openSettings();},
   r:function(){if(LIVE)scanNow();},j:function(){focusRow(listRows()[0]);},'?':function(){openSettings('app','keys-sec');}};
@@ -1829,11 +1896,11 @@ document.getElementById('sound-test').addEventListener('click',function(){api('/
 /* the tray menu's actions: scan, sign in, hidden keywords, files, quit */
 var nowMsg=document.getElementById('scan-now-msg');
 function follow(el){var seen=false,tries=0,iv=setInterval(function(){status().then(function(s){
-  if(s.scanning){seen=true;el.textContent=s.status;}
-  if((seen&&!s.scanning)||(!seen&&++tries>5)){clearInterval(iv);el.textContent=s.status;refreshBoard();}
+  if(s.scanning){seen=true;el.textContent=s.progress?s.progress.text:s.status;}
+  if((seen&&!s.scanning)||(!seen&&++tries>5)){clearInterval(iv);el.textContent=s.status;}
 }).catch(function(){clearInterval(iv);});},2000);}
-function startScan(full){api('/api/scan',full?{full:true}:{}).then(function(){
-  nowMsg.textContent=full?'Full Moodle scan starting. This can take a few minutes.':'Scan starting…';follow(nowMsg);})
+function startScan(full){api('/api/scan',full?{full:true}:{}).then(function(r){
+  nowMsg.textContent=scanWords(r.state,full);if(r.state!=='signing-in')follow(nowMsg);fastUntil=Date.now()+6000;watchStatus();})
   .catch(function(e){nowMsg.textContent=e.message;});}
 document.getElementById('scan-now').addEventListener('click',function(){startScan(false);});
 document.getElementById('scan-full').addEventListener('click',function(){startScan(true);});
@@ -1994,11 +2061,8 @@ if(LIVE){
       location.reload();
     }).catch(function(){});
   }
-  /* Pick up new scan results without a reload, unless you're in the middle of something. */
-  setInterval(function(){
-    if(document.hidden||settings.open||itemDlg.open||document.querySelector('.row.leaving'))return;
-    var a=document.activeElement;if(a&&wrap.contains(a)&&a.matches(':focus-visible'))return;   /* moving through the list by keyboard */
-    status().then(function(s){if(String(s.version)!==version())refreshBoard();}).catch(function(){});
-  },20000);
+  /* Pick up new scan results without a reload, and show a scan's progress as it goes (see watchStatus). */
+  watchStatus();
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)watchStatus();});
 }
 })();"""

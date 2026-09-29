@@ -129,7 +129,8 @@ class McGraw:
     def _signed_out(page) -> bool:
         return bool(re.search(r"login|signin|sign-in", page.url, re.I) or page.locator("input[type=password]").count())
 
-    def scan(self, ctx: BrowserContext) -> list[Item]:
+    def scan(self, ctx: BrowserContext, progress=None) -> list[Item]:
+        say = progress or (lambda part=0.0, detail="": None)
         page = ctx.new_page()
         try:
             self._open(page, self.pages[0])
@@ -139,10 +140,12 @@ class McGraw:
                 raise NeedsLogin(f"McGraw Hill Connect sign-in needed at {page.url}")
             # the To Do list, then Connect's class list or calendar if its menu has them, then every class page named
             # anywhere (at most PAGES_PER_SCAN pages)
-            urls, rows, read = list(self.pages), {}, []
+            urls, rows, read, shown = list(self.pages), {}, [], 0.0
             for i in range(PAGES_PER_SCAN):
                 if i >= len(urls):
                     break
+                shown = max(shown, i / min(len(urls), PAGES_PER_SCAN))   # more pages found never moves the bar back
+                say(shown, "To Do list" if not i else f"page {i + 1} of {min(len(urls), PAGES_PER_SCAN)}")
                 if i:
                     self._open(page, urls[i])
                     if self._signed_out(page):

@@ -114,6 +114,7 @@ def _launch_scanner(pw):
 def open_context(settings: Settings):
     """Browser context for a background scan."""
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    saved_at = STATE_PATH.stat().st_mtime if STATE_PATH.exists() else 0.0
     with sync_playwright() as pw:
         if settings.headless:
             browser = _launch_scanner(pw)
@@ -128,8 +129,13 @@ def open_context(settings: Settings):
         try:
             yield ctx
         finally:
-            with contextlib.suppress(Exception):
-                save_state(ctx)
+            # The sign-in window can be open while a scan runs, saving each sign-in as it happens. If it saved while this
+            # scan ran, its session is the newer one, and this scan's copy would undo a sign-in.
+            if (STATE_PATH.stat().st_mtime if STATE_PATH.exists() else 0.0) == saved_at:
+                with contextlib.suppress(Exception):
+                    save_state(ctx)
+            else:
+                log.info("Kept the session the sign-in window saved during this scan")
             with contextlib.suppress(Exception):
                 browser.close()
 
@@ -199,12 +205,16 @@ def _go(page: Page, url: str) -> bool:
         return False
 
 
-def interactive_login(settings: Settings) -> list[str]:
+def interactive_login(settings: Settings,
+                      on_change: Callable[[list[str], list[str]], None] | None = None) -> list[str]:
     """Visible Edge window for signing in. Presses Moodle's sign-in button for
-    you, closes itself once both sites are signed in (or when you close it),
-    and hands the cookies to the background scanner. Returns the sites it
-    couldn't even open ("Moodle", "Outlook", ...), so Birdbrain can say which
-    address to check."""
+    you, closes itself once every site is signed in (or when you close it),
+    and hands the cookies to the background scanner. `on_change(signed,
+    waiting)` hears which sites are signed in and which the window is still
+    waiting on, whenever that changes (the session is saved first, so a scan
+    can start on the signed-in ones at once). Returns the sites it couldn't
+    even open ("Moodle", "Outlook", ...), so Birdbrain can say which address
+    to check."""
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     missed: list[str] = []
     base = settings.moodle_url.rstrip("/")
@@ -243,7 +253,7 @@ def interactive_login(settings: Settings) -> list[str]:
         if settings.scan_gradescope:
             p = ctx.new_page()
             if _go(p, settings.gradescope_url.rstrip("/") + "/login"):
-                site_pages.append((p, _signed_in_gradescope))
+                site_pages.append(("Gradescope", p, _signed_in_gradescope))
             else:
                 missed.append("Gradescope")
         connect = None
@@ -253,24 +263,32 @@ def interactive_login(settings: Settings) -> list[str]:
             p = ctx.new_page()
             p.add_init_script(_note_js(urlparse(base).netloc))
             if _go(p, settings.mcgraw_course or base + "/my/courses.php"):
-                site_pages.append((p, lambda _p: connect.done()))
+                site_pages.append(("McGraw Hill Connect", p, lambda _p: connect.done()))
             elif "Moodle" not in missed:   # it's a Moodle page, so Moodle's address is the one to check
                 missed.append("McGraw Hill Connect")
         elif settings.scan_mcgraw:
             p = ctx.new_page()
             if _go(p, settings.mcgraw_url.rstrip("/")):
-                site_pages.append((p, _signed_in_mcgraw))
+                site_pages.append(("McGraw Hill Connect", p, _signed_in_mcgraw))
             else:
                 missed.append("McGraw Hill Connect")
 
         host = urlparse(base).netloc
+        # every site the window waits on: its name, its tab, and when it counts as signed in (a closed tab isn't waited on)
+        watch = ([("Moodle", moodle_page, lambda p: _signed_in_moodle(p, host))] if moodle_page else []) \
+            + ([("Outlook", outlook_page, _signed_in_outlook)] if outlook_page else []) + site_pages
+        told = None
         while ctx.pages:
+            open_ = [(name, p, ok) for name, p, ok in watch if not p.is_closed()]
+            signed = [name for name, p, ok in open_ if ok(p)]
+            waiting = [name for name, p, ok in open_ if name not in signed]
             with contextlib.suppress(Exception):
                 save_state_quietly(ctx)
-            moodle_ok = moodle_page is None or moodle_page.is_closed() or _signed_in_moodle(moodle_page, host)
-            outlook_ok = outlook_page is None or outlook_page.is_closed() or _signed_in_outlook(outlook_page)
-            sites_ok = all(p.is_closed() or ok(p) for p, ok in site_pages)
-            if moodle_ok and outlook_ok and sites_ok:
+            if on_change and (signed, waiting) != told:
+                told = (signed, waiting)
+                with contextlib.suppress(Exception):
+                    on_change(signed, waiting)
+            if not waiting:
                 log.info("Signed in to everything; closing the sign-in window")
                 break
             if connect:

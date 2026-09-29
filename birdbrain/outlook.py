@@ -85,11 +85,15 @@ class Outlook:
             raise
         return page
 
-    def scan(self, ctx: BrowserContext) -> list[Item]:
+    def scan(self, ctx: BrowserContext, progress=None) -> list[Item]:
+        """The newest emails and the calendar; `progress(part, detail)` hears which it's reading."""
+        say = progress or (lambda part=0.0, detail="": None)
         new: list[Item] = []
         if self.s.scan_outlook_mail:
+            say(0.0, "email")
             new += self._scan_mail(ctx)
         if self.s.scan_outlook_calendar:
+            say(0.5 if self.s.scan_outlook_mail else 0.0, "calendar")
             new += self._scan_calendar(ctx)
         return new
 

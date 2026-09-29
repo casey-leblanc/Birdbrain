@@ -125,12 +125,18 @@ class Moodle:
         return kind
 
     # --- public -----------------------------------------------------------------
-    def scan(self, ctx: BrowserContext, full: bool) -> list[Item]:
+    def scan(self, ctx: BrowserContext, full: bool, progress=None) -> list[Item]:
+        """The timeline and calendar; a full scan also reads every course's pages. `progress(part, detail)` hears how
+        far it has got (0 to 1), and what it's reading."""
+        say = progress or (lambda part=0.0, detail="": None)
+        say(0.0, "opening your dashboard")
         self._connect(ctx)
         courses = self._courses()
+        say(0.05 if full else 0.4, "timeline and calendar")
         new = self._scan_action_events() + self._scan_calendar_events()
         if full:
-            for cid, cname in courses.items():
+            for n, (cid, cname) in enumerate(courses.items()):
+                say(0.1 + 0.9 * n / len(courses), f"{cname} (course {n + 1} of {len(courses)})")
                 log.info("Full scan of course %s", cname)
                 new += self._scan_index(cid, cname, "assign")
                 new += self._scan_index(cid, cname, "quiz")

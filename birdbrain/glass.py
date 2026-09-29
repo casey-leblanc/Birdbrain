@@ -128,6 +128,7 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 h1{grid-column:2;grid-row:1;justify-self:center;align-self:center;font-size:1.75rem;font-weight:700;line-height:1.1;letter-spacing:.01em;color:var(--g-title);text-transform:lowercase}
 .status{grid-column:1/-1;grid-row:2;justify-self:center;text-align:center;max-width:60ch;margin-top:-16px;font-size:.8125rem;color:var(--g-t2)}
 .status.problem{background:var(--g-red);color:var(--g-ink);font-weight:700;padding:2px 10px;border-radius:6px}
+.status{--bar-track:rgba(255,255,255,.22);--bar-fill:rgba(255,255,255,.92)}
 .actions{grid-column:3;grid-row:1;justify-self:end;align-self:center;display:flex;gap:8px}
 .today{grid-column:1;grid-row:1;align-self:center;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
 /* next exam and next quiz: side by side, or one line across when alone */
