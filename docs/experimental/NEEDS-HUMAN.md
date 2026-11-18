@@ -31,14 +31,30 @@ GitHub was checked from Linux. The two have not been done together, from the but
    Settings › App › Updates should name the new build.
 4. If it doesn't come back, open `%LOCALAPPDATA%\Birdbrain-update\update.log` and send its contents.
 
-## 3. An old TypeSafe key
+## 3. The quick write shortcut on a real PC
+
+The build machine checks that Windows gives Birdbrain Ctrl+Alt+Space and that pressing it opens quick write
+without an error. Nobody has looked at the small window.
+
+1. With Birdbrain running and its window closed, click into another program (a browser, say).
+2. Press Ctrl+Alt+Space. A small dark line should appear on top, about a third of the way down the screen, with
+   the cursor already in it.
+3. Type `test from anywhere tmr 9am` and press Enter. It should say "Added …" and disappear by itself, and the
+   main window should stay closed.
+4. Open Birdbrain: the item should be under Tomorrow at 9:00 AM.
+5. Press the shortcut again, then Esc: the line should go away.
+
+Things to note if they happen: the line opens but typing goes to the other program (you have to click it first);
+it opens behind other windows; it has a white flash or a title bar; it appears on the wrong screen.
+
+## 4. An old TypeSafe key
 
 If you used Jev in 1.1.2, your key is still in `%APPDATA%\Birdbrain\config.json` (as `typesafe_api_key`) until
 this version next saves its settings, and in the `TYPESAFE_API_KEY` environment variable if you set one. This
 version never reads either. Remove the variable yourself if you want it gone: Start › "Edit environment variables
 for your account".
 
-## 4. Signing (later, the owner's call)
+## 5. Signing (later, the owner's call)
 
 The app is unsigned, so Windows shows "Windows protected your PC" on first run, and the README tells students to
 choose More info › Run anyway. Signing removes that. It needs a code-signing certificate in the owner's name;
