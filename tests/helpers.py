@@ -13,6 +13,7 @@ from pathlib import Path
 
 _DATA = tempfile.mkdtemp(prefix="birdbrain-tests-")
 os.environ["APPDATA"] = _DATA
+os.environ["BIRDBRAIN_SYSTEM"] = "windows"   # the same half on every machine; the Mac half is tested by name
 os.environ["LOCALAPPDATA"] = _DATA
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "birdbrain"))
 

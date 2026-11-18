@@ -18,9 +18,12 @@ Birdbrain asks here and nowhere else:
 
 A feature a system can't have yet is switched off by its half, so the rest of the app hides it instead of breaking.
 """
+import os
 import sys
 
-if sys.platform == "darwin":
+# BIRDBRAIN_SYSTEM names the half outright. The tests set it to "windows", so that they mean the same on whatever
+# machine runs them; the Mac half is tested by name (tests/test_system.py) and by the packaged app on a real Mac.
+if (os.environ.get("BIRDBRAIN_SYSTEM") or ("mac" if sys.platform == "darwin" else "windows")) == "mac":
     from system_mac import *       # noqa: F401,F403
     import system_mac as half
 else:

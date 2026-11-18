@@ -35,8 +35,15 @@ class TwoHalves(unittest.TestCase):
             self.assertEqual([n for n in WANTED if not hasattr(half, n)], [], half.__name__)
 
     def test_the_module_is_the_half_that_fits_this_computer(self):
-        self.assertEqual(system.NAME, "mac" if sys.platform == "darwin" else "windows")
-        self.assertIs(system.half, system_mac if sys.platform == "darwin" else system_win)
+        self.assertIs(system.half, system_win)                                  # the tests pin it (helpers.py)
+        pick = "import system; print(system.NAME)"
+        env = {k: v for k, v in os.environ.items() if k != "BIRDBRAIN_SYSTEM"}
+        src = str(Path(system.__file__).parent)
+        said = subprocess.run([sys.executable, "-c", pick], cwd=src, env=env, capture_output=True, text=True).stdout.strip()
+        self.assertEqual(said, "mac" if sys.platform == "darwin" else "windows")   # left alone, it goes by the machine
+        said = subprocess.run([sys.executable, "-c", pick], cwd=src, env={**env, "BIRDBRAIN_SYSTEM": "mac"},
+                              capture_output=True, text=True).stdout.strip()
+        self.assertEqual(said, "mac")
 
     def test_what_each_system_calls_things(self):
         self.assertEqual((system_win.MOD, system_win.TRAY, system_win.PROGRAM, system_win.ASSET),
