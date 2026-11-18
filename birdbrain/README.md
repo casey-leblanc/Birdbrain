@@ -96,11 +96,16 @@ Everything else is the title. If it reads a word you meant as plain text, press 
 word and it is handed back. **Ctrl+Enter** saves and stays open for the next one; **Esc** closes. You can fill in
 the rest (class, notes) later from the card's Details.
 
+**From anywhere on your PC:** press **Ctrl+Alt+Space**, even with Birdbrain's window closed. A small quick write
+line opens on top of whatever you're doing; type, press Enter, and it's gone again. You can change the shortcut or
+turn it off in Settings › App. If another program already uses it, Settings says so and offers others.
+
 ### Keys
 
 | Key | Does |
 |---|---|
 | Space | Quick write: add something |
+| Ctrl+Alt+Space | Quick write from anywhere on your PC |
 | M | The menu |
 | S | Settings |
 | R | Scan now |
@@ -126,7 +131,7 @@ the rest (class, notes) later from the card's Details.
 - **Courses**: a colour and a nickname for each course tag.
 - **Keywords**: anything whose title or course contains a keyword goes straight to Archived. Remove the keyword
   and they come back.
-- **App**: sounds, the keys, **Updates**, the settings file and the log, About, and Quit.
+- **App**: sounds, the keys, the quick write shortcut, **Updates**, the settings file and the log, About, and Quit.
 
 ## Updates
 

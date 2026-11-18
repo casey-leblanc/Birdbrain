@@ -156,7 +156,7 @@ class Scripts(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node isn't installed here")
-        for name in ("JS", "CHROME_JS", "SETUP_JS"):
+        for name in ("JS", "CHROME_JS", "SETUP_JS", "QUICK_PAGE_JS"):
             with self.subTest(script=name):
                 path = Path(tempfile.mkdtemp()) / f"{name}.js"
                 path.write_text(getattr(report, name), encoding="utf-8")

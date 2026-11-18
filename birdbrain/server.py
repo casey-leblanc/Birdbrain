@@ -42,10 +42,12 @@ class ListServer:
     def __init__(self, store: Store, render_page: Callable[[str], str], render_board: Callable[[str], str],
                  status: Callable[[], dict], request_mail_scan: Callable[[date], None],
                  on_change: Callable[[], None], port: int = 0,
-                 actions: dict[str, Callable[[dict], dict]] | None = None):
+                 actions: dict[str, Callable[[dict], dict]] | None = None,
+                 render_quick: Callable[[str], str] | None = None):
         self.store = store
         self.token = secrets.token_urlsafe(24)
         self.render_page, self.render_board = render_page, render_board
+        self.render_quick = render_quick   # the small quick write window's page, at /quick
         self.status, self.request_mail_scan, self.on_change = status, request_mail_scan, on_change
         self.actions = actions or {}   # the app's own actions (scan, sign in, keywords, ...) at /api/<name>
         try:  # keep the same port between runs when it's free
@@ -273,6 +275,8 @@ class ListServer:
                         app = parse_qs(url.query).get("app", [""])[0] == "1"
                         page = srv.render_page(srv.token, app_window=True) if app else srv.render_page(srv.token)
                         return self._send(200, page, "text/html; charset=utf-8")
+                    if url.path == "/quick" and srv.render_quick:
+                        return self._send(200, srv.render_quick(srv.token), "text/html; charset=utf-8")
                     if url.path == "/board":
                         return self._send(200, srv.render_board(srv.token), "text/html; charset=utf-8")
                     if url.path == "/api/status":

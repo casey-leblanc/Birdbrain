@@ -665,8 +665,33 @@ def _updates(update: dict | None) -> str:
         'sign-ins stay as they are.</p></div>')
 
 
+def _hotkey_section(h: dict | None) -> str:
+    """Settings > App: the system-wide shortcut for quick write. `h` is what the app says about it: whether this
+    computer can have one, the shortcut in force, and what went wrong with the one asked for, if anything."""
+    h = h or {"available": False, "combo": "", "label": "", "want": "", "problem": "", "suggest": []}
+    if not h["available"]:
+        return ('<div class="set-sec" id="hotkey-sec"><h3>Quick write from anywhere</h3><p class="hint">A shortcut that '
+                'works with Birdbrain’s window closed is on Windows only for now. In the window, press <kbd>Space</kbd>.</p></div>')
+    keys = lambda combo: "+".join(f"<kbd>{e(k)}</kbd>" for k in combo.split("+")) if combo else ""
+    if h["combo"]:
+        state = f'Press {keys(h["label"])} anywhere on your PC, even with Birdbrain’s window closed, and type.'
+    elif h["problem"]:
+        state = e(h["problem"])
+    else:
+        state = "The shortcut is off. In Birdbrain’s window, Space still opens quick write."
+    offers = "".join(f'<button type="button" class="btn" data-hotkey="{e(c["combo"])}">Use {e(c["label"])}</button>'
+                     for c in h["suggest"]) if h["problem"] else ""
+    return (
+        '<div class="set-sec" id="hotkey-sec"><h3>Quick write from anywhere</h3>'
+        f'<p class="hint" id="hotkey-msg" aria-live="polite">{state}</p>'
+        f'<div class="btn-row" id="hotkey-offers">{offers}</div>'
+        '<div class="btn-row"><button type="button" class="btn" id="hotkey-change">Change the shortcut</button>'
+        f'<button type="button" class="btn" id="hotkey-off"{"" if h["combo"] or h["problem"] else " hidden"}>Turn it off</button>'
+        f'<button type="button" class="btn" id="hotkey-on"{" hidden" if h["combo"] or h["problem"] else ""}>Turn it on</button></div></div>')
+
+
 def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Settings, p: dict,
-                     update: dict | None = None) -> str:
+                     update: dict | None = None, hotkey: dict | None = None) -> str:
     glass_layout = layout == "glass"
     layouts = "".join(f'<label><input type="radio" name="layout" value="{v}"><span>{label}</span></label>'
                       for v, label in theme.LAYOUT_NAMES.items())
@@ -744,7 +769,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<div class="set-sec"><h3>Sounds</h3><div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
         "<span>A soft call when something new is due, a chirp when you finish today's list</span></label>"
         '<button type="button" class="act" id="sound-test">Play the call</button></div></div>'
-        + _keys() + _updates(update) +
+        + _keys() + _hotkey_section(hotkey) + _updates(update) +
         '<div class="set-sec"><h3>Files</h3>'
         '<p class="hint">The settings file holds the scan interval, how far ahead to look and other options.</p>'
         '<div class="btn-row"><button type="button" class="btn" data-open="settings">Open settings file</button>'
@@ -818,7 +843,7 @@ def _grounds(p: dict) -> dict:
 
 def render(b: Board, settings: Settings, status: str, now: datetime, token: str = "", version: int = 0,
            prefs: dict | None = None, app_window: bool = False, progress: dict | None = None,
-           sign_in: list | None = None, update: dict | None = None) -> str:
+           sign_in: list | None = None, update: dict | None = None, hotkey: dict | None = None) -> str:
     prefs = prefs or prefs_mod.DEFAULTS
     mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
     # "Match system" is resolved in the browser before the first paint.
@@ -846,7 +871,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_keys_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_keys_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -948,6 +973,75 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         _TITLEBAR if app_window and token else "",
         f'<script type="application/json" id="setup-data">{data}</script>',
         f"<script>{CHROME_JS}</script><script>{SETUP_JS}</script></body></html>",
+    ])
+
+
+QUICK_PAGE_CSS = """
+html,body{margin:0;height:100%;overflow:hidden;font:16px/1.5 "Birdbrain Sans",system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+:root{--q-bg:#20242C;--q-fg:#FFFFFF;--q-line:rgba(255,255,255,.28);--q-muted:rgba(255,255,255,.72);--q-chip:rgba(255,255,255,.14)}
+:root[data-mode=light]{--q-bg:#F6F7F4;--q-fg:#1C2230;--q-line:rgba(28,34,48,.22);--q-muted:rgba(28,34,48,.7);--q-chip:rgba(28,34,48,.08)}
+body{background:var(--q-bg);color:var(--q-fg);border:1px solid var(--q-line);box-sizing:border-box}
+p{margin:0}
+#quick-form{display:grid;gap:10px;padding:18px 22px 14px}
+#quick-line{width:100%;font:inherit;font-size:1.375rem;font-weight:600;color:inherit;background:none;border:0;padding:4px 0;outline:none}
+#quick-line::placeholder{color:var(--q-muted);font-weight:400;opacity:.7}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:28px;font-size:.8125rem;color:var(--q-muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--q-chip);color:var(--q-fg);font-weight:600}
+.chip[data-what=day]::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.6}
+.chips.saved{color:var(--q-fg);font-weight:600;align-items:center}
+.quick-hint{font-size:.75rem;color:var(--q-muted)}
+.quick-hint kbd{font:inherit;font-weight:600;padding:1px 5px;margin:0 2px 0 0;border:1px solid var(--q-line);border-radius:4px}
+.quick-hint span{opacity:.6}
+"""
+
+QUICK_PAGE_JS = """(function(){
+var TOKEN=document.querySelector('meta[name=birdbrain-token]').content,line=document.getElementById('quick-line'),
+  chips=document.getElementById('quick-chips'),skip=[],seq=0,read=null,EMPTY={chips:[{what:'day',text:'',says:'Today'}]},hideT=0;
+function api(path,body){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Birdbrain-Token':TOKEN},
+  body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){
+    if(!r.ok)throw new Error(j.error||('Error '+r.status));return j;});});}
+function paint(r){read=r;chips.className='chips';chips.textContent='';(r.chips||[]).forEach(function(c){var s=document.createElement('span');
+  s.className='chip';s.dataset.what=c.what;s.textContent=c.says;chips.appendChild(s);});}
+function ask(){var n=++seq;return api('/api/quick',{text:line.value,skip:skip}).then(function(r){if(n===seq)paint(r);}).catch(function(){});}
+function fresh(){clearTimeout(hideT);skip=[];line.value='';paint(EMPTY);line.focus();}
+function hide(){api('/api/quick-hide').catch(function(){});}
+function save(stay){if(!line.value.trim())return;++seq;
+  api('/api/quick',{text:line.value,skip:skip,save:true}).then(function(r){
+    skip=[];line.value='';read=null;chips.className='chips saved';chips.textContent='Added “'+r.title+'” for '+r.day.replace(/^(Today|Tomorrow)$/,function(d){return d.toLowerCase();});
+    clearTimeout(hideT);hideT=setTimeout(function(){if(stay)paint(EMPTY);else{hide();paint(EMPTY);}},stay?1200:700);})
+  .catch(function(e){chips.className='chips saved';chips.textContent=e.message;});}
+line.addEventListener('input',ask);
+line.addEventListener('keydown',function(ev){
+  if(ev.key==='Enter'){ev.preventDefault();save(ev.ctrlKey||ev.metaKey);return;}
+  if(ev.key==='Escape'){ev.preventDefault();hide();fresh();return;}
+  if(ev.key==='Backspace'&&read&&line.selectionStart===line.selectionEnd){var at=line.selectionStart,
+    c=(read.chips||[]).filter(function(c){return c.text&&c.end===at;})[0];
+    if(c){ev.preventDefault();skip.push(c.text.toLowerCase());ask();}}});
+document.getElementById('quick-form').addEventListener('submit',function(ev){ev.preventDefault();});
+window.birdbrainQuick={open:fresh};   /* the app calls this each time the shortcut brings the window up */
+fresh();
+})();"""
+
+
+def render_quick(token: str, prefs: dict | None = None) -> str:
+    """The page in the small always-on-top window that the system-wide shortcut opens: the quick write line, its
+    chips, and nothing else. It saves through the same action as quick write in the main window."""
+    prefs = prefs or prefs_mod.DEFAULTS
+    mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
+    head_js = ("var r=document.documentElement;if(r.dataset.modePref==='system')"
+               "r.dataset.mode=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';")
+    return "".join([
+        f'<!doctype html><html lang="en" data-mode="{mode}" data-mode-pref="{e(prefs["mode"])}">',
+        '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+        f'<meta name="birdbrain-token" content="{e(token)}"><title>Quick write</title><script>{head_js}</script>',
+        f"<style>{theme.font_face_css()}{QUICK_PAGE_CSS}</style></head><body>",
+        '<form id="quick-form" novalidate>'
+        '<input id="quick-line" name="text" maxlength="300" autocomplete="off" spellcheck="false" enterkeyhint="done" '
+        'placeholder="lab report fri 5pm #life" aria-label="What do you need to do?" aria-describedby="quick-hint">'
+        '<p id="quick-chips" class="chips" aria-live="polite"></p>'
+        '<p id="quick-hint" class="quick-hint"><kbd>Enter</kbd> save<span> · </span><kbd>Ctrl</kbd><kbd>Enter</kbd> save and '
+        'add another<span> · </span><kbd>Esc</kbd> close</p></form>',
+        f"<script>{QUICK_PAGE_JS}</script></body></html>",
     ])
 
 
@@ -1849,7 +1943,9 @@ document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.too
 /* double-click a card (not its link, tick box or buttons) for its details */
 wrap.addEventListener('dblclick',function(ev){var li=ev.target.closest('.row[data-id]');
   if(li&&!ev.target.closest('a,button,input,label,summary'))openDetails(li);});
-function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
+var quickAsks=null;
+function paintStatus(s){if(typeof s.quick==='number'){if(quickAsks!==null&&s.quick>quickAsks)openQuick();quickAsks=s.quick;}   /* the shortcut, with no small window to open */
+  var st=wrap.querySelector('.status');if(!st)return;
   var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar');
   if(t&&typeof text==='string'&&t.textContent!==text)t.textContent=text;
   st.classList.toggle('scanning',!!p);
@@ -1939,6 +2035,28 @@ qLine.addEventListener('keydown',function(ev){
     if(c){ev.preventDefault();qSkip.push(c.text.toLowerCase());readQuick();}}});
 document.getElementById('quick-form').addEventListener('submit',function(ev){ev.preventDefault();});
 quick.addEventListener('click',function(ev){if(ev.target===quick)quick.close();});
+/* Settings > App: the system-wide shortcut. "Change" listens for the next shortcut pressed; a taken one is said,
+   with others to use instead. */
+(function(){var sec=document.getElementById('hotkey-sec'),change=document.getElementById('hotkey-change');if(!change)return;
+  var msg=document.getElementById('hotkey-msg'),offers=document.getElementById('hotkey-offers'),off=document.getElementById('hotkey-off'),
+    on=document.getElementById('hotkey-on'),listening=false;
+  function show(r){msg.textContent=r.message;offers.textContent='';off.hidden=!(r.combo||r.problem);on.hidden=!off.hidden;
+    (r.problem?r.suggest:[]).forEach(function(c){var b=document.createElement('button');b.type='button';b.className='btn';
+      b.dataset.hotkey=c.combo;b.textContent='Use '+c.label;offers.appendChild(b);});}
+  function ask(body){return api('/api/hotkey',body).then(show).catch(function(e){msg.textContent=e.message;});}
+  function stop(){listening=false;change.textContent='Change the shortcut';}
+  change.addEventListener('click',function(){if(listening){stop();return;}listening=true;
+    change.textContent='Press the new shortcut (Esc to cancel)';});
+  sec.addEventListener('keydown',function(ev){if(!listening)return;ev.preventDefault();ev.stopPropagation();
+    if(ev.key==='Escape'){stop();return;}
+    if(/^(Control|Alt|Shift|Meta|OS)$/.test(ev.key))return;   /* still holding modifiers down */
+    var key=ev.code==='Space'?'space':/^Key[A-Z]$/.test(ev.code)?ev.code.slice(3).toLowerCase():/^Digit[0-9]$/.test(ev.code)?ev.code.slice(5)
+      :/^F([1-9]|1[0-2])$/.test(ev.code)?ev.code.toLowerCase():'',mods=[];
+    if(ev.ctrlKey)mods.push('ctrl');if(ev.altKey)mods.push('alt');if(ev.shiftKey)mods.push('shift');if(ev.metaKey)mods.push('win');
+    stop();ask({combo:mods.concat([key||ev.key]).join('+')});},true);
+  offers.addEventListener('click',function(ev){var b=ev.target.closest('[data-hotkey]');if(b)ask({combo:b.dataset.hotkey});});
+  off.addEventListener('click',function(){ask({combo:''});});
+  on.addEventListener('click',function(){ask({on:true});});})();
 (function(){var msg=document.getElementById('update-msg'),go=document.getElementById('update-go');
   function show(r){msg.textContent=r.message;go.hidden=!(r.available&&r.packaged);
     if(r.available)go.textContent='Update to '+r.available+' and restart';}

@@ -33,6 +33,7 @@ from PIL import Image, ImageDraw, ImageFont
 import appwindow
 import buildinfo
 import filters
+import hotkey
 import instance
 import power
 import prefs
@@ -186,6 +187,9 @@ class App:
         self.stop_mail = threading.Event()     # "Stop" on that scan: what it has already added stays
         self.server: ListServer | None = None
         self.window: appwindow.AppWindow | None = None
+        self.shortcut = hotkey.Shortcut(hotkey.Hotkey(self.on_quick), save=self._save_hotkey)
+        self.quick_window: appwindow.QuickWindow | None = None
+        self.quick_asks = 0   # times the shortcut was pressed with no small window to open: the list page opens quick write
         self.updater = updater.Updater()
         self.update: updater.Release | None = None   # a newer build, once a check has found one
         self.update_progress: dict | None = None     # while one is being downloaded and installed
@@ -265,7 +269,7 @@ class App:
             return report.render_board(b, self.settings, self.status, now, self.store.version, saved, progress=p,
                                        sign_in=self._needs_sign_in())
         return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window, progress=p,
-                             sign_in=self._needs_sign_in(), update=self._update_view())
+                             sign_in=self._needs_sign_in(), update=self._update_view(), hotkey=self.shortcut.view())
 
     def _progress_view(self) -> dict | None:
         """What the status line's progress bar shows: an update going in, else the scan that's running."""
@@ -280,7 +284,7 @@ class App:
 
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
-                "progress": self._progress_view(), "signing_in": self.signing_in.is_set(),
+                "progress": self._progress_view(), "signing_in": self.signing_in.is_set(), "quick": self.quick_asks,
                 "scanning": self.scanning or self.mail_since is not None,
                 "inbox": self.inbox_scanning or self.mail_since is not None}
 
@@ -296,7 +300,8 @@ class App:
                                      render_board=lambda token: self._render(token, board=True),
                                      status=self._page_status, request_mail_scan=self.request_mail_scan,
                                      on_change=self._refresh_view, port=self._last_port(),
-                                     actions=self._page_actions())
+                                     actions=self._page_actions(),
+                                     render_quick=lambda token: report.render_quick(token, prefs.load(self.store)))
             self.server.start()
             self.store.set_meta("server_port", str(self.server.port))
         except Exception:
@@ -319,7 +324,41 @@ class App:
     def _page_actions(self) -> dict:
         return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "sites": self.api_sites, "keywords": self.api_keywords,
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
-                "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update}
+                "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update,
+                "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide}
+
+    # --- quick write from anywhere: the system-wide shortcut and its small window -----------
+    def on_quick(self) -> None:
+        """The shortcut was pressed. The small always-on-top window opens; where Birdbrain has no window of its own,
+        the list comes up with quick write open instead."""
+        log.info("Quick write opened by its shortcut")
+        if self.window and self.server:
+            try:
+                if self.quick_window is None:
+                    self.quick_window = appwindow.QuickWindow(self.server.url.replace("/?token=", "/quick?token="))
+                self.quick_window.show()
+                return
+            except Exception:
+                log.exception("The quick write window couldn't open; using the main window")
+        self.quick_asks += 1
+        self.on_show()
+
+    def api_quick_hide(self, body: dict) -> dict:
+        if self.quick_window:
+            self.quick_window.hide()
+        return {"ok": True}
+
+    def _save_hotkey(self, combo: str) -> None:
+        s = Settings.load()
+        s.quick_hotkey = self.settings.quick_hotkey = combo
+        s.save()
+
+    def _start_hotkey(self) -> None:
+        """Put the saved shortcut in force. If another program has it, say so once; Settings offers others."""
+        problem = self.shortcut.start(self.settings.quick_hotkey)
+        if problem and self.store.get_meta("hotkey:told") != self.settings.quick_hotkey:
+            self.store.set_meta("hotkey:told", self.settings.quick_hotkey)
+            self._notify_soon(f"{problem} Pick another shortcut for quick write in Settings, under App.")
 
     # --- updates: Birdbrain's own builds on GitHub ---------------------------------------
     def _update_view(self) -> dict:
@@ -649,6 +688,7 @@ class App:
 
     def on_quit(self, *_):
         self.stop.set()
+        self.shortcut.keys.stop()
         self.wake.set()
         if self.server:
             self.server.stop()
@@ -837,6 +877,7 @@ class App:
                     self.set_up.set()
         self._listen_for_show()
         self._update_result()
+        threading.Thread(target=self._start_hotkey, daemon=True, name="hotkey-start").start()
         threading.Thread(target=self.loop, daemon=True, name="scans").start()
         threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
                          daemon=True, name="tray").start()

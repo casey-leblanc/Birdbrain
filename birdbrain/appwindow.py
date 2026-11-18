@@ -197,6 +197,54 @@ def available() -> bool:
         return False
 
 
+class QuickWindow:
+    """The small always-on-top window the system-wide shortcut opens: the quick write line and nothing else. It is
+    made the first time it's asked for and hidden, not closed, afterwards, so the next press is instant. It only
+    works once the main window's event loop is running (AppWindow.run)."""
+    TITLE, WIDTH, HEIGHT = "Birdbrain quick write", 680, 150
+
+    def __init__(self, url: str):
+        self.url = url
+        self.window = None
+        self._lock = threading.Lock()
+
+    def show(self) -> None:
+        import webview
+        with self._lock:
+            first = self.window is None
+            if first:
+                x = y = None
+                try:   # a third of the way down the main screen, centred
+                    screen = webview.screens[0]
+                    x, y = screen.x + (screen.width - self.WIDTH) // 2, screen.y + int(screen.height * .22)
+                except Exception:
+                    pass
+                self.window = webview.create_window(self.TITLE, self.url, width=self.WIDTH, height=self.HEIGHT, x=x, y=y,
+                                                    frameless=True, on_top=True, resizable=False, easy_drag=True,
+                                                    background_color="#20242C")
+                self.window.events.closing += self._on_closing
+        if not first:
+            self.window.show()
+            try:
+                self.window.evaluate_js("window.birdbrainQuick && birdbrainQuick.open()")
+            except Exception:
+                pass
+        try:   # Windows lets the program whose shortcut was just pressed take the keyboard
+            hwnd = _own_window(self.TITLE, timeout=5 if first else 1)
+            if hwnd:
+                _u32.SetForegroundWindow(hwnd)
+        except Exception:
+            log.exception("Couldn't bring the quick write window to the front")
+
+    def _on_closing(self) -> bool:
+        self.window.hide()
+        return False   # hidden, not closed (Alt+F4)
+
+    def hide(self) -> None:
+        if self.window is not None:
+            self.window.hide()
+
+
 class AppWindow:
     def __init__(self, url: str, icon_path: str | None = None):
         import webview

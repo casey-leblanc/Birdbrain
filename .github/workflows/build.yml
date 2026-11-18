@@ -96,6 +96,18 @@ jobs:
             $again = Start-Process -FilePath $exe -ArgumentList '--background' -PassThru
             if (-not $again.WaitForExit(30000)) { $again.Kill(); throw "A second copy didn't hand over and leave" }
           }
+          # The system-wide shortcut for quick write: Windows must have given it to Birdbrain. Then press it, as a
+          # student would, and see the small quick write window open without an error.
+          $ready = 'Quick write shortcut: Ctrl\+Alt\+Space'
+          for ($i = 0; $i -lt 20 -and -not (Select-String -Path $log -Pattern $ready -Quiet); $i++) { Start-Sleep 1 }
+          if (-not (Select-String -Path $log -Pattern $ready -Quiet)) { Get-Content $log; throw "The quick write shortcut wasn't registered" }
+          Add-Type -Namespace Win -Name Keys -MemberDefinition '[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);'
+          foreach ($vk in 0x11, 0x12, 0x20) { [Win.Keys]::keybd_event($vk, 0, 0, [UIntPtr]::Zero) }
+          foreach ($vk in 0x20, 0x12, 0x11) { [Win.Keys]::keybd_event($vk, 0, 2, [UIntPtr]::Zero) }
+          $opened = 'Quick write opened by its shortcut'
+          for ($i = 0; $i -lt 15 -and -not (Select-String -Path $log -Pattern $opened -Quiet); $i++) { Start-Sleep 1 }
+          if (Select-String -Path $log -Pattern $opened -Quiet) { "PRESSED: Ctrl+Alt+Space reached Birdbrain and opened quick write." }
+          else { "NOT PRESSED: this machine didn't deliver the simulated key press, so only the registration was checked." }
           Start-Sleep 5
           if ($first.HasExited) { throw "Birdbrain stopped by itself (exit code $($first.ExitCode))" }
           if (Select-String -Path $log -Pattern 'Traceback|CRITICAL' -Quiet) { throw "Birdbrain logged an error while starting" }
