@@ -108,6 +108,13 @@ class PageTest(unittest.TestCase):
         """The app's own actions the page may call (scan, quit, ...); a test adds the ones it needs."""
         return {}
 
+    def settled(self):
+        """Wait until nothing on the list is still gliding: nobody grabs a card that's on the move."""
+        for _ in range(150):
+            if not self.page.evaluate("() => document.getAnimations().some(a => a.effect && a.effect.target && a.effect.target.closest('.bands'))"):
+                return
+            self.page.wait_for_timeout(20)
+
     def row(self, title: str):
         return self.page.locator(".row", has_text=title).first
 

@@ -18,7 +18,7 @@ import re
 import secrets
 import threading
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
@@ -28,6 +28,7 @@ import glass
 import planner
 import prefs
 import quickwrite
+import snooze
 from store import COURSE_CODE, LABEL_ID, WHAT, Item, Store
 
 log = logging.getLogger(__name__)
@@ -148,6 +149,27 @@ class ListServer:
         self.on_change()
         return {"ok": True, "was": was}
 
+    def snooze(self, body: dict, now: datetime | None = None) -> dict:
+        """Hide a card until a day, wake it, or (with "ask") say what the snooze window should offer for it."""
+        now = now or datetime.now()
+        item_id = str(body.get("id", ""))
+        if body.get("ask"):
+            item = self.store.get(item_id)
+            if not item:
+                raise ValueError("That card isn't on your list any more.")
+            if item.due.date() == now.date() and item.due >= now:
+                raise ValueError("It's due today, so it can't be snoozed.")
+            return {"ok": True, "choices": snooze.choices(item, now), "min": (now.date() + timedelta(days=1)).isoformat()}
+        until = None
+        if body.get("until"):
+            try:
+                until = date.fromisoformat(str(body["until"]))
+            except ValueError:
+                raise ValueError("That isn't a day.")
+        out = snooze.snooze(self.store, item_id, until, now)
+        self.on_change()
+        return out
+
     def move(self, body: dict, now: datetime | None = None) -> dict:
         """A card was dropped somewhere: Completed, Archived, or a day (before another card, or last). A move that
         can't be made is refused with the reason (planner.py)."""
@@ -258,7 +280,7 @@ class ListServer:
         routes = {"/api/done": srv.set_done, "/api/items": srv.add_item, "/api/items/update": srv.update_item,
                   "/api/items/delete": srv.delete_item, "/api/items/restore": srv.restore_item,
                   "/api/place": srv.place, "/api/kind": srv.kind, "/api/quick": srv.quick,
-                  "/api/move": srv.move, "/api/move-undo": srv.move_undo, "/api/prefs": srv.save_prefs,
+                  "/api/move": srv.move, "/api/move-undo": srv.move_undo, "/api/snooze": srv.snooze, "/api/prefs": srv.save_prefs,
                   "/api/scan-mail": srv.scan_mail, "/api/photo-remove": srv.remove_photo}
         routes.update({f"/api/{name}": fn for name, fn in srv.actions.items()})
 

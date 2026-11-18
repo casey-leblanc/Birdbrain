@@ -29,6 +29,8 @@ class Many(PageTest):
 
     def hold(self, row):
         row.scroll_into_view_if_needed()
+        self.page.wait_for_timeout(150)   # cards scrolled into view for the first time take their real heights: look, then grab
+        self.settled()
         b = row.locator(".t").bounding_box()
         x, y = b["x"] + 12, b["y"] + b["height"] / 2
         self.page.mouse.move(x, y)

@@ -37,6 +37,7 @@ import prefs as prefs_mod
 import theme
 from config import REPORT_PATH, Settings
 import reader
+import snooze
 from store import Item, Store
 
 SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outlook calendar",
@@ -113,6 +114,12 @@ def build(store: Store, settings: Settings, now: datetime | None = None) -> Boar
     # Duplicates are judged against every Moodle item, ticked off or not.
     items, archived = filters.split([i for i in everything if not i.done_at], settings.hidden_keywords,
                                     pool=everything, placement=store.placements())
+
+    # A snoozed card waits in Archived until its day (snooze.py).
+    sleeping = [i for i in items if snooze.asleep(i, today.date())]
+    items = [i for i in items if i not in sleeping]
+    archived = [filters.Hidden(i, f"Snoozed until {snooze.say_day(i.snoozed, today.date())}")
+                for i in sorted(sleeping, key=lambda i: i.snoozed)] + archived
 
     # A card sits under the day it's due, or the day the student planned it for, in the order they gave that day
     # (planner.py). Homework past its deadline is overdue until it's planned for a day.
@@ -293,8 +300,12 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
         meta += f'<time class="w{" late" if urgent else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">{e(_when(i, now, when))}</time>'
     if i.needs_review and not (reason or done):
         meta += '<span class="unsure" title="This date was read from text; double-check it">date unsure</span>'
+    if not (reason or done) and snooze.back_today(i, now.date()):
+        meta += '<span class="snz" title="You snoozed this until today">back from snooze</span>'
     if not (reason or done):   # any item can be put out of the way; it waits in Archived
-        meta += (f'<button type="button" class="act arch needs-app" aria-label="Archive {e(title)}">Archive</button>')
+        meta += (f'<button type="button" class="act snooze needs-app" title="Snooze (S)" aria-keyshortcuts="S" '
+                 f'aria-label="Snooze {e(title)}">Snooze</button>'
+                 f'<button type="button" class="act arch needs-app" aria-label="Archive {e(title)}">Archive</button>')
         if i.source != "manual":   # say what it is, if the rules have it wrong (your own items have Edit)
             what = test_level(i) or i.kind
             meta += (f'<button type="button" class="act whatis needs-app" data-what="{what}" aria-haspopup="dialog" '
@@ -306,6 +317,9 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
     if done:
         stamp = f"{i.done_at:%a, %b} {i.done_at.day} at {_time(i.done_at)}"
         tail = f'<p class="detail">Completed {e(stamp)}. {acts}</p>'   # the bin's hint says how to put it back
+    elif reason.startswith("Snoozed"):
+        tail = (f'<p class="detail">{e(reason)}. <span class="acts needs-app"><button type="button" class="act wake" '
+                f'aria-label="Wake {e(title)} now">Wake it now</button></span></p>')
     elif reason:
         tail = (f'<p class="detail">Hidden: {e(reason)}. <span class="acts needs-app"><button type="button" class="act show" '
                 f'aria-label="Show {e(title)} on your list">Show on list</button></span></p>')
@@ -670,7 +684,8 @@ KEYS = (("Anywhere", ((("Space",),), "Quick write: add something"), ((("M",),), 
         ("On an item", ((("↓",), ("J",)), "Next item"), ((("↑",), ("K",)), "Previous item"),
          ((("←",), ("→",)), "The column beside"), ((("X",),), "Tick it off, or untick it"),
          ((("E",),), "Its details"), ((("O",),), "Open it in Moodle or Outlook"),
-         ((("A",),), "Archive it, or show it again"), ((("D",),), "Send it to Completed"),
+         ((("A",),), "Archive it, or show it again"), ((("S",),), "Snooze it until a day"),
+         ((("D",),), "Send it to Completed"),
          ((("M",),), "Pick it up to move: arrows, then Enter")))
 
 
@@ -978,11 +993,11 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{motion.HEAD_JS}{head_js}</script>",
         f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
-        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}{feel.CSS}{commands.CSS}</style>",
+        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}{feel.CSS}{commands.CSS}{snooze.CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_filter_dialog()}{_keys_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_filter_dialog()}{_keys_dialog()}{snooze.dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -1819,7 +1834,7 @@ function refreshBoard(focus,opts){var f=focus||focusTarget(),o=opts||{};if(said=
     if(!r.ok)throw new Error(GONE);return r.text();})
   .then(function(h){var was=flow?null:layout();rebuild(h);bindBoard();if(o.glide)glide(o.glide,o.skip);else if(was)glide(was);restoreFocus(f);
     var p=problemText();if(p&&p!==said)document.getElementById('announce').textContent=wrap.querySelector('.status .st').textContent;
-    said=p;lastRefresh=Date.now();});
+    said=p;lastRefresh=Date.now();builtOn=new Date().toDateString();});
 }
 /* the row after this one in its column or bin (focus moves there when this one leaves); if it was the last there, the
    nearest one anywhere on the page, so focus is never dropped */
@@ -2089,7 +2104,7 @@ function scanNow(){api('/api/scan').then(function(r){toast(scanWords(r.state));f
    while the window is hidden), and every second and a half just after you ask for a scan, until it has started. The
    list is rebuilt when there's something new, as a scan goes and when it ends, but never while you're in the middle
    of something: then as soon as you aren't. */
-var pollT=0,wasBusy=false,stale=false,lastRefresh=0,fastUntil=0;
+var pollT=0,wasBusy=false,stale=false,lastRefresh=0,fastUntil=0,builtOn=new Date().toDateString();
 /* The menu in the top corner: Add item, Settings, Scan now, Check for updates, Quit. Arrow keys move through it,
    Esc or a click anywhere else closes it. The list is rebuilt around it, so it's wired again each time. */
 function menuParts(){return {btn:document.getElementById('open-menu'),box:document.getElementById('app-menu')};}
@@ -2146,7 +2161,7 @@ function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
   status().then(function(s){paintStatus(s);
     var busy=!!(s.scanning||s.inbox||s.signing_in);
-    if((wasBusy&&!busy)||String(s.version)!==version())stale=true;
+    if((wasBusy&&!busy)||String(s.version)!==version()||new Date().toDateString()!==builtOn)stale=true;   /* or a new day has begun */
     if(stale&&canRefresh()&&(!busy||Date.now()-lastRefresh>8000)){stale=false;refreshBoard();}
     wasBusy=busy;pollT=setTimeout(watchStatus,busy||Date.now()<fastUntil?1500:5000);})
   .catch(function(){pollT=setTimeout(watchStatus,20000);});}
@@ -2168,7 +2183,7 @@ wrap.addEventListener('keydown',function(ev){
     var boxes=[].slice.call(wrap.querySelectorAll('.band,.bin[open]')),b=boxes.indexOf(row.closest('.band,.bin')),step=k==='ArrowRight'?1:-1;
     for(var j=b+step;j>=0&&j<boxes.length&&!go;j+=step)go=boxes[j].querySelector('.row[data-id]');}
   else if(k==='o'||k==='O'||(k==='Enter'&&ev.target.classList.contains('tick'))){var a=row.querySelector('a.t');if(a){ev.preventDefault();a.click();}return;}
-  else if(k==='a'||k==='A')return act('.act.arch,.act.show');
+  else if(k==='a'||k==='A')return act('.act.arch,.act.show,.act.wake');
   else if(k==='x'||k==='X')return act('.tick');
   else if(k==='e'||k==='E'){if(LIVE){ev.preventDefault();openDetails(row);}return;}
   else return;
@@ -2278,7 +2293,6 @@ fLine.addEventListener('input',function(){setFilter(readFilter(fLine.value));fSa
   if(FILTER){var s=document.createElement('span');s.className='chip';s.textContent='Only '+FILTER.says;fSays.appendChild(s);}});
 document.getElementById('filter-form').addEventListener('submit',function(ev){ev.preventDefault();if(!cmdRun())filterDlg.close();});
 filterDlg.addEventListener('cancel',function(){setFilter(null);});   /* Esc in the line: show everything */
-filterDlg.addEventListener('close',function(){if(document.activeElement===fLine)fLine.blur();});   /* so the next key is a shortcut again at once */
 filterDlg.addEventListener('click',function(ev){if(ev.target===filterDlg)filterDlg.close();});
 document.addEventListener('keydown',function(ev){   /* Esc on the list, with a filter on: show everything */
   if(ev.key==='Escape'&&FILTER&&!document.querySelector('dialog[open]')&&!document.querySelector('#app-menu:not([hidden])')){ev.preventDefault();setFilter(null);}});
@@ -2684,6 +2698,7 @@ settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){
 /*FEEL*/
 /*DRAG*/
 /*COMMANDS*/
+/*SNOOZE*/
 bindBoard();
 
 if(LIVE){
@@ -2712,5 +2727,5 @@ if(LIVE){
 })();"""
 
 # every script gets the same motion helpers (CALM, MS, EASE: motion.py)
-JS = JS.replace("/*FEEL*/", feel.JS).replace("/*DRAG*/", dragdrop.JS).replace("/*COMMANDS*/", commands.JS)
+JS = JS.replace("/*FEEL*/", feel.JS).replace("/*DRAG*/", dragdrop.JS).replace("/*COMMANDS*/", commands.JS).replace("/*SNOOZE*/", snooze.JS)
 JS, CHROME_JS, SETUP_JS = (script.replace("/*MOTION*/", motion.SCRIPT) for script in (JS, CHROME_JS, SETUP_JS))

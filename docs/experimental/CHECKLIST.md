@@ -159,7 +159,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 2. Notifications on the PC, on with no setup: one short line; morning, evening, and before a test
 - [x] 3. Telegram under Advanced, off by default, no AI: one-time code, Done buttons, texting adds an item
 - [x] 4. Search and commands: Ctrl+K or `/`
-- [ ] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
+- [x] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
 - [ ] 6. Repeating personal items from quick write
 - [ ] 7. Each day says its load; a heavy day ahead is called out once
 - [ ] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
@@ -209,3 +209,15 @@ One test for everything here: does it help a student see what to do and start on
   Completed, Archived, notifications, sign in, keys, updates, Telegram, quit. Later items add their own.
 - A key pressed in the instant after a window closes (Esc then `/`) was being swallowed by the box that had just
   closed; shortcuts now ignore a focused box inside a closed window.
+- Snooze keeps one date on the card ("hidden until"). The day it is reached the card shows "back from snooze";
+  the day after, nothing. A scan never changes it.
+- A snoozed card waits in Archived ("Snoozed until Friday", Wake it now) rather than in a fourth bin.
+- "Never past a deadline without saying so" is done by not letting it happen at all: a day after the deadline is
+  brought forward to the deadline's day, the choice says so before it is picked and the toast says so after.
+  Something due today can't be snoozed; overdue work can sleep to any day.
+- "Next week" is the coming Monday (on a Sunday, the Monday after tomorrow's).
+- A sleeping card is left out of notifications, like anything else that isn't on the list.
+- S on a card snoozes; anywhere else S is still Settings. The card's Snooze button is hidden until the card is
+  pointed at or focused, like Archive, so cards stay clean.
+- The list now also rebuilds itself when the date changes, so cards come back from snooze (and Today becomes
+  yesterday) without anything else having to happen.

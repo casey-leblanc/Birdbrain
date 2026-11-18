@@ -61,6 +61,7 @@ class Item:
                                # when 11:59 PM stood for "no time" (report.has_time)
     planned: date | None = None  # "I'll do it then": the day the student dragged it to, earlier than it's due
     rank: float | None = None    # its place among that day's cards, once the student has put them in order
+    snoozed: date | None = None  # hidden until this day (snooze.py); on that day the card says it's back
 
 
 def text_hash(text: str) -> str:
@@ -68,7 +69,7 @@ def text_hash(text: str) -> str:
 
 
 _COLUMNS = ("id, source, kind, title, due, course, url, detail, confidence, needs_review, level, done_at, label, timed, "
-            "planned, rank")
+            "planned, rank, snoozed")
 LABEL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")   # what a label's id looks like
 
 
@@ -105,6 +106,8 @@ class Store:
             if "planned" not in have:   # 2.0: where the student dragged a card (planner.py)
                 self._db.execute("ALTER TABLE items ADD COLUMN planned TEXT")
                 self._db.execute("ALTER TABLE items ADD COLUMN rank REAL")
+            if "snoozed" not in have:   # 2.0: hidden until a day (snooze.py)
+                self._db.execute("ALTER TABLE items ADD COLUMN snoozed TEXT")
 
     def _changed(self) -> None:
         self.version += 1
@@ -209,6 +212,14 @@ class Store:
             cur = self._db.execute("UPDATE items SET done_at=? WHERE id=?", (stamp, item_id))
         self._changed()
         return cur.rowcount > 0
+
+    def snooze(self, item_id: str, until: date | None) -> date | None:
+        """Hide a card until a day (None wakes it now). Returns what it was before, so the change can be undone."""
+        with self._lock, self._db:
+            row = self._db.execute("SELECT snoozed FROM items WHERE id=?", (item_id,)).fetchone()
+            self._db.execute("UPDATE items SET snoozed=? WHERE id=?", (until.isoformat() if until else None, item_id))
+        self._changed()
+        return date.fromisoformat(row[0]) if row and row[0] else None
 
     # --- where the student put a card: a planned day, a place in its day's order (planner.py) -----
     # A scan never touches these (upsert leaves them alone), so they last across scans and restarts.
@@ -341,4 +352,5 @@ class Store:
 def _item(r) -> Item:
     return Item(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4]) if r[4] else None, r[5], r[6], r[7],
                 r[8], bool(r[9]), r[10] or "", datetime.fromisoformat(r[11]) if r[11] else None, r[12] or "",
-                None if r[13] is None else bool(r[13]), date.fromisoformat(r[14]) if r[14] else None, r[15])
+                None if r[13] is None else bool(r[13]), date.fromisoformat(r[14]) if r[14] else None, r[15],
+                date.fromisoformat(r[16]) if r[16] else None)

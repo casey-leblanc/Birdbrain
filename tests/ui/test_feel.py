@@ -41,6 +41,7 @@ class Feel(PageTest):
         return b
 
     def drag_first(self, title: str, onto: str):
+        self.settled()
         b = self.row(title).locator(".t").bounding_box()
         self.page.mouse.move(b["x"] + 12, b["y"] + b["height"] / 2)
         self.page.mouse.down()

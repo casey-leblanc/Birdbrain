@@ -88,6 +88,13 @@ Without a mouse: press **M** on a card to pick it up, move it with the arrow key
 left and right between the columns), **Enter** to drop it, **Esc** to put it back. **D** sends a card to
 Completed and **A** to Archived. A screen reader hears each step ("Thursday, second of four").
 
+### Snooze
+
+Press **S** on a card (or point at it and choose **Snooze**) to put it out of sight until **tomorrow**, **next
+week**, or a day you pick. It waits in Archived, comes back by itself that morning with a "back from snooze" tag,
+and **Wake it now** brings it back sooner. A card never stays hidden past its deadline: ask for a day after it is
+due and it comes back the day it is due, and Birdbrain says so. Something due today can't be snoozed.
+
 ### Motion
 
 Settings › Look › Motion has three levels. **Full**: cards lift, glide and spring into place, and on Glass a ripple
@@ -167,6 +174,7 @@ turn it off in Settings › Keys. If another program already uses it, Settings s
 | E | The item's details |
 | O | Open the item in Moodle or Outlook |
 | A | Archive it, or show it again |
+| S | Snooze it until a day (anywhere else, S is Settings) |
 | D | Send it to Completed |
 | M | Pick the item up: arrows move it, Enter drops it, Esc puts it back |
 | Ctrl+Z | Undo the last change |

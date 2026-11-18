@@ -19,10 +19,7 @@ class Moving(PageTest):
 
     def hold(self, row):
         """Press on a card's title and carry it a little way: enough to pick it up."""
-        for _ in range(100):                                                   # nobody grabs a card that's still gliding
-            if not self.page.evaluate("() => document.getAnimations().some(a => a.effect.target.closest('.bands'))"):
-                break
-            self.page.wait_for_timeout(20)
+        self.settled()
         b = row.locator(".t").bounding_box()
         x, y = b["x"] + 12, b["y"] + b["height"] / 2
         self.page.mouse.move(x, y)
