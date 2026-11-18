@@ -55,7 +55,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
 - [x] 6. System-wide hotkey on Windows (Ctrl+Alt+Space), changeable, with a small always-on-top quick write
 - [x] 7. Labels: four to begin with plus your own, tags on cards, filter by tag, Settings › Labels
-- [ ] 8. Keyboard-only UI test of the whole thing, under a second of the page's own time
+- [x] 8. Keyboard-only UI test of the whole thing, under a second of the page's own time
 
 ### Decisions
 
@@ -94,3 +94,6 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   title. The filter is the page's own and stays on while the list rebuilds.
 - Undo for a deleted label is in the Settings pane itself: the message at the bottom of the list sits behind
   Settings, where it can't be clicked.
+- The keyboard-only test listens for any mouse event on the page and fails if one happens. It times the page's own
+  share (opening the line, and saving and showing the card) and requires under a second in total; a second test
+  types at about forty words a minute and requires Space-to-saved in under five seconds.
