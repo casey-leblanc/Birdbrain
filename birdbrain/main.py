@@ -31,12 +31,14 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 
 import appwindow
+import buildinfo
 import filters
 import instance
 import power
 import prefs
 import report
 import theme
+import updater
 from browser import NeedsLogin, interactive_login, open_context
 from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
                     migrate_old_data)
@@ -184,6 +186,11 @@ class App:
         self.stop_mail = threading.Event()     # "Stop" on that scan: what it has already added stays
         self.server: ListServer | None = None
         self.window: appwindow.AppWindow | None = None
+        self.updater = updater.Updater()
+        self.update: updater.Release | None = None   # a newer build, once a check has found one
+        self.update_progress: dict | None = None     # while one is being downloaded and installed
+        self.updating = threading.Lock()
+        self.last_update_check = 0.0
         self.window_coming = threading.Event()   # set while the app window is being made
         self.set_up = threading.Event()        # the Moodle (and Outlook) addresses are known
         if self.settings.moodle_url:
@@ -253,12 +260,16 @@ class App:
         saved = prefs.load(self.store)
         if not self.set_up.is_set() and not board:   # first run: ask for the addresses
             return report.render_setup(token, saved, app_window, self.settings.outlook_url)
-        p = self.progress.view() if self.progress else None
+        p = self._progress_view()
         if board:
             return report.render_board(b, self.settings, self.status, now, self.store.version, saved, progress=p,
                                        sign_in=self._needs_sign_in())
         return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window, progress=p,
-                             sign_in=self._needs_sign_in())
+                             sign_in=self._needs_sign_in(), update=self._update_view())
+
+    def _progress_view(self) -> dict | None:
+        """What the status line's progress bar shows: an update going in, else the scan that's running."""
+        return self.update_progress or (self.progress.view() if self.progress else None)
 
     def _needs_sign_in(self) -> list[str]:
         """The sites the last scan couldn't read because they want signing in to again (none while the sign-in
@@ -269,7 +280,7 @@ class App:
 
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
-                "progress": self.progress.view() if self.progress else None, "signing_in": self.signing_in.is_set(),
+                "progress": self._progress_view(), "signing_in": self.signing_in.is_set(),
                 "scanning": self.scanning or self.mail_since is not None,
                 "inbox": self.inbox_scanning or self.mail_since is not None}
 
@@ -308,7 +319,109 @@ class App:
     def _page_actions(self) -> dict:
         return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "sites": self.api_sites, "keywords": self.api_keywords,
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
-                "setup": self.api_setup, "addresses": self.api_addresses}
+                "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update}
+
+    # --- updates: Birdbrain's own builds on GitHub ---------------------------------------
+    def _update_view(self) -> dict:
+        """For the page: this build, and the newer one waiting, if a check found one."""
+        return {"current": buildinfo.name(), "available": self.update.label if self.update else "",
+                "notes": self.update.notes if self.update else "", "packaged": bool(getattr(sys, "frozen", False))}
+
+    def check_update(self) -> str:
+        """Ask GitHub for the newest build; what was found, in words. Raises updater.UpdateError with the reason."""
+        self.last_update_check = time.monotonic()
+        rel = self.updater.available()
+        changed = (rel.tag if rel else "") != (self.update.tag if self.update else "")
+        self.update = rel
+        if changed:
+            self.store.touch()   # open list pages hear about it
+        if not rel:
+            return f"Birdbrain {buildinfo.name()} is the newest version."
+        if not getattr(sys, "frozen", False):
+            return f"The newest build is {rel.label}. This copy runs from source: pull the repository to update it."
+        return f"Birdbrain {rel.label} is available."
+
+    def api_update(self, body: dict) -> dict:
+        """Settings > App > Updates: check, or install."""
+        try:
+            if body.get("install"):
+                if not self.update:
+                    self.check_update()
+                return {"ok": True, "message": self.start_update(), **self._update_view()}
+            return {"ok": True, "message": self.check_update(), **self._update_view()}
+        except updater.UpdateError as e:
+            raise ValueError(str(e))
+
+    def start_update(self) -> str:
+        """Install the build a check found, on its own thread; what's happening, in words."""
+        if not getattr(sys, "frozen", False):
+            return "This copy of Birdbrain runs from source: pull the repository to update it."
+        if self.signing_in.is_set():
+            return "Finish signing in first (the sign-in window is open), then update."
+        if self.updating.locked():
+            return "Already updating."
+        threading.Thread(target=self._install_update, daemon=True, name="update").start()
+        return "Updating. Birdbrain restarts by itself in a minute or two."
+
+    def _install_update(self) -> None:
+        if not self.updating.acquire(blocking=False):
+            return
+        step = lambda text, value=None: setattr(self, "update_progress", {"text": text, "value": value})
+        try:
+            step("Checking for the newest version")
+            rel = self.update or self.updater.available()
+            if not rel:
+                self._set_status(f"Birdbrain {buildinfo.name()} is already the newest version.")
+                return
+            what = f"Birdbrain {rel.label}"
+            zip_path = self.updater.download(rel, lambda part: step(f"Downloading {what}", round(part, 3)))
+            step(f"Checking {what} runs on this PC")
+            new_app = self.updater.stage(zip_path, rel)
+            step(f"Installing {what} once the scan running now ends" if self.scanning else f"Installing {what}")
+            with self.lock:   # no scan is using the browser, and none starts
+                step(f"Installing {what}: Birdbrain is restarting")
+                self.updater.install(new_app, rel, [])
+                log.info("Quitting for the update to %s", rel.tag)
+                self.on_quit()
+        except updater.UpdateError as e:
+            log.warning("Update failed: %s", e)
+            self._set_status(f"The update didn't go in: {e}")
+        except Exception:
+            log.exception("Update failed")
+            self._set_status("The update didn't go in (the log says why). Birdbrain is as it was.")
+        finally:
+            self.update_progress = None
+            self.updating.release()
+
+    def _update_result(self) -> None:
+        """Just restarted by an update: say how it went."""
+        got = updater.last_result()
+        if not got:
+            return
+        if got.get("ok"):
+            msg = f"Updated to Birdbrain {buildinfo.name()}."
+        else:
+            msg = (f"The update couldn't be installed ({got.get('why', 'see update.log')}). Birdbrain is as it was; "
+                   f"{updater.UPDATE_DIR / 'update.log'} says more.")
+        log.info("%s", msg)
+        self.status = msg + " " + self.status
+        self._notify_soon(msg)
+
+    def _auto_check_update(self) -> None:
+        """A few times a day: look for a new build, and say so once in the tray. Settings has the Update button."""
+        if not (self.settings.update_check and getattr(sys, "frozen", False)) or self.updating.locked():
+            return
+        if self.last_update_check and time.monotonic() - self.last_update_check < 6 * 3600:
+            return
+        try:
+            self.check_update()
+        except updater.UpdateError as e:
+            log.info("Update check: %s", e)
+            return
+        rel = self.update
+        if rel and self.store.get_meta("update:told") != rel.tag:
+            self.store.set_meta("update:told", rel.tag)
+            self.notify(f"Open Birdbrain's Settings and choose Update to {rel.label}.", f"Birdbrain {rel.label} is ready")
 
     def api_setup(self, body: dict) -> dict:
         """The welcome page. With "check", just tidy and check the addresses (step 1); otherwise save them and
@@ -701,6 +814,7 @@ class App:
                 self._set_status("Last scan failed (see log)")
             finally:
                 self.scanning = False
+            self._auto_check_update()
             if self.mail_since is None:   # nothing queued while we were busy
                 # by the clock on the wall: a PC that slept through its scan time scans as soon as it's back
                 why = power.wait(self.wake, self.settings.interval_minutes * 60, self.stop)
@@ -722,6 +836,7 @@ class App:
                 if self.settings.moodle_url:
                     self.set_up.set()
         self._listen_for_show()
+        self._update_result()
         threading.Thread(target=self.loop, daemon=True, name="scans").start()
         threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
                          daemon=True, name="tray").start()
@@ -828,9 +943,11 @@ if __name__ == "__main__":
         sys.exit(selftest.run(out))
     if "--build-info" in sys.argv:   # which build this is, written to the file named after the flag
         import json
-        import buildinfo
         Path(sys.argv[sys.argv.index("--build-info") + 1]).write_text(json.dumps(buildinfo.current()), encoding="utf-8")
         sys.exit(0)
+    if "--install-update" in sys.argv:   # install a build from a zip on this PC, then start it (updater.install_from_zip)
+        at = sys.argv.index("--install-update")
+        sys.exit(updater.install_from_zip(Path(sys.argv[at + 1]), sys.argv[at + 2:]))
     todo = instance.start_or_hand_over(sys.argv, show=show_running_copy)
     if todo != "start":
         if todo == "tell":   # another copy is running but couldn't be asked to show its window

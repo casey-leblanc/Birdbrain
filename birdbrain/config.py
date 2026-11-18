@@ -118,6 +118,7 @@ class Settings:
     mcgraw_sections: list = field(default_factory=list)  # Connect class pages seen (each lists every assignment)
     mcgraw_auto_renew: bool = False                        # re-open mcgraw_launch by itself when Connect signs out
     notify: bool = True
+    update_check: bool = True                              # look for a new build a few times a day
     # Entries whose title or course contains any of these (case-insensitive) are archived.
     hidden_keywords: list = field(default_factory=list)
     extra: dict = field(default_factory=dict)

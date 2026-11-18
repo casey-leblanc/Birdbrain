@@ -625,7 +625,28 @@ def _keys() -> str:
             '<p class="hint">Single keys work whenever no window is open and you aren\'t typing.</p></div>')
 
 
-def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Settings, p: dict) -> str:
+def _updates(update: dict | None) -> str:
+    """Settings > App > Updates: this version, Check for updates, and Update when a newer build is waiting."""
+    u = update or {"current": "", "available": "", "notes": "", "packaged": False}
+    ready = bool(u["available"] and u["packaged"])
+    if ready:
+        state = f"Birdbrain {e(u['available'])} is available."
+    elif u["packaged"]:
+        state = "Birdbrain looks for a new version a few times a day."
+    else:
+        state = "This copy runs from source, so it updates by pulling the repository."
+    return (
+        f'<div class="set-sec" id="updates-sec"><h3>Updates</h3><p class="hint">This is Birdbrain <b id="update-current">{e(u["current"])}</b>, '
+        'an experimental build. <span id="update-msg" aria-live="polite">' + state + '</span></p>'
+        '<div class="btn-row"><button type="button" class="btn" id="update-check">Check for updates</button>'
+        f'<button type="button" class="btn primary" id="update-go"{"" if ready else " hidden"}>'
+        f'Update to {e(u["available"]) or "the new version"} and restart</button></div>'
+        '<p class="hint">Updates come from Birdbrain’s page on GitHub. Nothing about you is sent, and your list and '
+        'sign-ins stay as they are.</p></div>')
+
+
+def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Settings, p: dict,
+                     update: dict | None = None) -> str:
     glass_layout = layout == "glass"
     layouts = "".join(f'<label><input type="radio" name="layout" value="{v}"><span>{label}</span></label>'
                       for v, label in theme.LAYOUT_NAMES.items())
@@ -703,7 +724,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<div class="set-sec"><h3>Sounds</h3><div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
         "<span>A soft call when something new is due, a chirp when you finish today's list</span></label>"
         '<button type="button" class="act" id="sound-test">Play the call</button></div></div>'
-        + _keys() +
+        + _keys() + _updates(update) +
         '<div class="set-sec"><h3>Files</h3>'
         '<p class="hint">The settings file holds the scan interval, how far ahead to look and other options.</p>'
         '<div class="btn-row"><button type="button" class="btn" data-open="settings">Open settings file</button>'
@@ -772,7 +793,7 @@ def _grounds(p: dict) -> dict:
 
 def render(b: Board, settings: Settings, status: str, now: datetime, token: str = "", version: int = 0,
            prefs: dict | None = None, app_window: bool = False, progress: dict | None = None,
-           sign_in: list | None = None) -> str:
+           sign_in: list | None = None, update: dict | None = None) -> str:
     prefs = prefs or prefs_mod.DEFAULTS
     mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
     # "Match system" is resolved in the browser before the first paint.
@@ -800,7 +821,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs)}{_item_dialog(b, now)}{_kind_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now)}{_kind_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -1742,6 +1763,9 @@ function scanWords(state,full){return {
   queued:'The full rescan starts as soon as the scan running now ends.',
   early:'Scanning what you’ve signed in to so far.',
   'signing-in':'Finish signing in, in the sign-in window. Birdbrain scans as soon as you’re signed in.'}[state]||'Scanning now.';}
+/* Update: Birdbrain downloads the new build (the status line says how far it has got), then restarts itself */
+function updateNow(){api('/api/update',{install:true}).then(function(r){toast(r.message);fastUntil=Date.now()+600000;watchStatus();})
+  .catch(function(e){toast(e.message);});}
 function scanNow(){api('/api/scan').then(function(r){toast(scanWords(r.state));fastUntil=Date.now()+6000;watchStatus();})
   .catch(function(e){toast("Couldn't start a scan: "+e.message);});}
 /* The status line, live: while Birdbrain scans (or waits on the sign-in window) it's asked every second and a half, and
@@ -1807,6 +1831,12 @@ function closeSheet(d){if(!d.open||d.classList.contains('closing'))return;
   d.classList.add('closing');
   d.addEventListener('animationend',function h(ev){if(ev.target!==d)return;d.removeEventListener('animationend',h);done();});
   setTimeout(done,400);}   /* in case the animation never runs */
+(function(){var msg=document.getElementById('update-msg'),go=document.getElementById('update-go');
+  function show(r){msg.textContent=r.message;go.hidden=!(r.available&&r.packaged);
+    if(r.available)go.textContent='Update to '+r.available+' and restart';}
+  document.getElementById('update-check').addEventListener('click',function(){msg.textContent='Checking…';
+    api('/api/update',{check:true}).then(show).catch(function(e){msg.textContent=e.message;});});
+  go.addEventListener('click',function(){closeSheet(settings);updateNow();});})();
 /* "What is this?": you say what an item is; it goes for its series in that course too */
 var kindDlg=document.getElementById('kind-dialog'),kindId=null;
 function askKind(id,title,what){kindId=id;kindDlg.querySelector('.kind-name').textContent=title;

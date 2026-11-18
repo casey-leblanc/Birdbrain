@@ -102,6 +102,37 @@ jobs:
           taskkill /PID $first.Id /T /F | Out-Null
           "Started, stayed up, and two more copies handed over to it."
 
+      - name: Update for real
+        # The updater's last steps on a real Windows machine: a copy that says it is an older build installs this
+        # build from its zip, the script swaps the files once that copy has quit, and the new version starts.
+        shell: pwsh
+        timeout-minutes: 6
+        run: |
+          $zip = Get-ChildItem dist\*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath update-test
+          $app = "$PWD\update-test\Birdbrain"
+          $stamp = "$app\_internal\assets\build.json"
+          '{"version": "0.0.1", "commit": "0000000", "tag": "exp-0.0.1-0000000"}' | Set-Content -Encoding utf8NoBOM $stamp
+          "left over from the old version" | Set-Content "$app\_internal\stale.txt"
+          $env:LOCALAPPDATA = "$PWD\update-local"
+          New-Item -ItemType Directory $env:LOCALAPPDATA | Out-Null
+          $after = "$PWD\after-update.json"
+          $old = Start-Process -FilePath "$app\Birdbrain.exe" -ArgumentList '--install-update', $zip.FullName, '--build-info', $after -PassThru
+          if (-not $old.WaitForExit(150000)) { $old.Kill(); throw "The old version didn't hand over and quit" }
+          for ($i = 0; $i -lt 180 -and -not (Test-Path $after); $i++) { Start-Sleep 1 }
+          $dir = "$env:LOCALAPPDATA\Birdbrain-update"
+          if (Test-Path "$dir\update.log") { Get-Content "$dir\update.log" }
+          if (Test-Path "$dir\result.json") { Get-Content "$dir\result.json" }
+          if (-not (Test-Path $after)) { throw "The new version was never started after the swap" }
+          $want = "${{ steps.selftest.outputs.tag }}"
+          $now = Get-Content $after | ConvertFrom-Json
+          if ($now.tag -ne $want) { throw "After the update the app says it is $($now.tag), not $want" }
+          $result = Get-Content "$dir\result.json" | ConvertFrom-Json
+          if (-not $result.ok) { throw "The update script reported a failure" }
+          if (Test-Path "$app\_internal\stale.txt") { throw "A file from the old version was left behind" }
+          if (-not (Test-Path "$dir\previous\_internal\stale.txt")) { throw "The version in use wasn't kept as a backup" }
+          "Updated from exp-0.0.1-0000000 to $($now.tag), kept the old version, and started the new one."
+
       - uses: actions/upload-artifact@v4
         with:
           name: Birdbrain-windows
