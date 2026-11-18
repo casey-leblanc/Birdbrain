@@ -40,6 +40,7 @@ import phone
 import power
 import prefs
 import report
+import states
 import theme
 import toast
 import trouble
@@ -72,9 +73,6 @@ def squawk(sound: Path = SQUAWK) -> None:
 SHOW_EVENT = "Local\\BirdbrainShowWindow"   # a second launch sets this to bring the window up
 
 # The browser's errors for an address that leads nowhere: no such site, nothing answering there, or not a site it trusts.
-_NO_SITE = re.compile(r"ERR_NAME_NOT_RESOLVED|ERR_ADDRESS_UNREACHABLE|ERR_CONNECTION_REFUSED|ERR_CERT_|ERR_SSL_PROTOCOL|"
-                      r"ERR_INVALID_URL|ERR_TOO_MANY_REDIRECTS")
-
 
 class Progress:
     """How far a scan has got, for the list page's progress bar. Each site takes a share of the bar (a full Moodle scan,
@@ -103,14 +101,6 @@ class Progress:
 def _and(names: list[str]) -> str:
     """'Moodle', 'Moodle and Outlook', 'Moodle, Outlook and Gradescope'."""
     return " and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1]
-
-
-def _trouble(name: str, address: str, e: Exception) -> str:
-    """A failed scan in words the student can act on: a site that can't be reached is usually a mistyped address,
-    which Settings can change."""
-    if _NO_SITE.search(str(e)):
-        return f"Couldn't reach {name} at {urlparse(address).netloc or address}; check the address in Settings › Advanced"
-    return f"{name} scan failed (see log)"
 
 
 # The perched bird from the page's "all clear" drawing (report.PERCH), in its 96 x 60 drawing units: the body as
@@ -202,6 +192,7 @@ class App:
         self.window: appwindow.AppWindow | None = None
         self.shortcut = hotkey.Shortcut(hotkey.Hotkey(self.on_quick), save=self._save_hotkey)
         self.quick_window: appwindow.QuickWindow | None = None
+        self.offline = False   # the last scan couldn't reach any site at all
         self.quick_asks = 0   # times the shortcut was pressed with no small window to open: the list page opens quick write
         self.notices = notices.Notices(self.store, self.settings)   # what to say unasked, and when
         self.toasts = toast.Toasts(lambda title, text: self.notify(text, title), self.notices, self.on_show,
@@ -764,7 +755,7 @@ class App:
                 self.scan(only=ready)
             except Exception:
                 log.exception("Scan crashed")
-                self._set_status("Last scan failed (see log)")
+                self._set_status(states.DIDNT_FINISH)
             finally:
                 self.scanning = False
         threading.Thread(target=run, daemon=True, name="early-scan").start()
@@ -829,7 +820,7 @@ class App:
             problem = "Outlook needs sign-in"
         except Exception:
             log.exception("Inbox scan failed")
-            problem = "Inbox scan failed (see log)"
+            problem = "The inbox scan didn't finish; try again, or use Report a problem in the menu"
         finally:
             self.inbox_scanning = False
             if self.progress is mine:
@@ -862,7 +853,7 @@ class App:
         full = full and any(name == "Moodle" for name, _ in sites)
         if full or only is None:
             self.force_full = False
-        new, problems = [], []
+        new, troubles = [], []
         step = lambda name: (lambda part=0.0, detail="": self.progress and self.progress.at(name, part, detail))
         address = {"Moodle": s.moodle_url, "Outlook": s.outlook_url}
         with self.lock:   # after any scan already running, which keeps its own progress until it ends
@@ -885,17 +876,19 @@ class App:
                                 new += McGraw(s, self.store).scan(ctx, progress=step(name))
                         except NeedsLogin as e:
                             log.warning("%s", e)
-                            problems.append(f"{name} needs sign-in")
+                            troubles.append(states.Problem(name, "sign-in"))
                         except Exception as e:
                             log.exception("%s scan failed", name)
-                            problems.append(_trouble(name, address[name], e) if name in address else f"{name} scan failed (see log)")
+                            troubles.append(states.problem(name, e, address.get(name, "")))
             finally:
                 self.progress = None
 
         updated = datetime.now().strftime("%I:%M %p").lstrip("0")
         waiting = f" Waiting for you to sign in to {_and(self.waiting)}." if self.signing_in.is_set() and self.waiting else ""
-        self.status = f"Updated {updated}." + (f" {'; '.join(problems)}." if problems else "") + waiting
-        self.problems = problems
+        problems = [p.line for p in troubles]
+        self.offline = states.offline(troubles, len(sites))   # the loop looks again sooner, and nothing is called a problem
+        self.status = states.status(updated, troubles, len(sites)) + waiting
+        self.problems = [] if self.offline else problems
         self._refresh_view()
 
         needs = [p for p in problems if "sign-in" in p]
@@ -946,13 +939,15 @@ class App:
                     self.scan_inbox(since) if since else self.scan()
             except Exception:
                 log.exception("Scan crashed")
-                self._set_status("Last scan failed (see log)")
+                self._set_status(states.DIDNT_FINISH)
             finally:
                 self.scanning = False
             self._auto_check_update()
             if self.mail_since is None:   # nothing queued while we were busy
                 # by the clock on the wall: a PC that slept through its scan time scans as soon as it's back
-                why = power.wait(self.wake, self.settings.interval_minutes * 60, self.stop)
+                # offline: look again in a few minutes rather than waiting out the whole interval
+                wait = min(5, self.settings.interval_minutes) if self.offline else self.settings.interval_minutes
+                why = power.wait(self.wake, wait * 60, self.stop)
                 self.wake.clear()
                 if why == "woke":
                     log.info("Back from sleep: scanning once the network is up")

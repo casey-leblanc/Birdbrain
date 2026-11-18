@@ -164,7 +164,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 7. Each day says its load; a heavy day ahead is called out once
 - [x] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
 - [x] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
-- [ ] 10. The states in between, each in one line
+- [x] 10. The states in between, each in one line
 - [ ] 11. Backup: export and import personal items and labels
 - [ ] 12. Access: keyboard, focus, contrast, names, text size
 - [ ] 13. Anything else worth it, one at a time
@@ -251,3 +251,11 @@ One test for everything here: does it help a student see what to do and start on
   they hide are blanked whole. Rules can miss something oddly written, so the window shows every line and asks the
   student to look before saving, and what is saved is exactly what was shown.
 - The zip goes to Downloads and is shown there, selected; nothing opens an email or a web page.
+- The states in between (`states.py`): a failed scan of a site is one of three things, each with its own line:
+  needs sign-in; couldn't be reached (check the connection or the address); or answered but couldn't be read (the
+  page may have changed: check for updates). "Scan failed (see log)" is gone.
+- When every site is out of reach at once, that is the computer being offline: it is said once ("You're offline.
+  Your list is as it was…"), the dot stays calm rather than red, no sign-in card or notification follows, and the
+  next scan comes in five minutes instead of an hour.
+- The list's own in-between states were already there and are now held by tests: nothing due today, nothing left
+  for today, all clear with what is next, and the first scan saying what it is reading.

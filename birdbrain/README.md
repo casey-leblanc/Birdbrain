@@ -290,7 +290,13 @@ it; Birdbrain keeps scanning. Quit stops it.
 
 ## If something goes wrong
 
-- **Nothing new is showing up.** Look at the dot: red means a site needs signing in to, or couldn't be reached.
+- **Nothing new is showing up.** Look at the dot and the line beside it. It says what is going on and what to do:
+  - *You're offline.* Your list is as it was, and Birdbrain scans again as soon as you're back online.
+  - *Moodle needs sign-in.* Use the Sign in card at the top of the list.
+  - *Couldn't reach Moodle at …* Check your connection, or the address in Settings › Advanced.
+  - *Moodle couldn't be read: its page may have changed.* Your list is as it was. Check for updates in the menu: a
+    site that changes needs a newer Birdbrain.
+  - *The last scan didn't finish.* Birdbrain tries again by itself; if it keeps happening, use Report a problem.
 - **A card is the wrong kind.** Press E on the card and say what it is.
 - **A card shouldn't be there.** Archive it, or add a keyword for the whole kind of thing.
 - **The window won't open.** Start `Birdbrain.exe` again: it brings the running copy's window forward.

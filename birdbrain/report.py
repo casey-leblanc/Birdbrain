@@ -434,7 +434,8 @@ def status_state(status: str, scanning: bool = False) -> str:
     for the first sign-in)."""
     if scanning:
         return "scanning"
-    if any(w in status.lower() for w in ("needs sign-in", "failed", "couldn't reach", "didn't go in", "couldn't be installed")):
+    if any(w in status.lower() for w in ("needs sign-in", "failed", "didn't finish", "couldn't reach", "couldn't be read", "didn't go in",
+                                         "couldn't be installed")):
         return "problem"
     return "idle" if QUIET.fullmatch(status.strip()) else "note"
 
