@@ -238,10 +238,18 @@ Its sections are listed down the side, in this order:
   nickname for each class.
 - **Updates**: which build you have, and the Update button.
 - **About**, and Quit.
-- **Advanced**, last and apart: things most students never need, each folded shut until you open it. Telegram; your Moodle
+- **Advanced**, last and apart: things most students never need, each folded shut until you open it. Telegram;
+  **Backup** (below); your Moodle
   and Outlook addresses; a full rescan of Moodle; "Scan back to", which reads older emails back to a date you
   pick; hidden keywords (anything whose title or course contains one goes straight to Archived); the log and the
   settings file.
+
+## Backup, and moving to another computer
+
+Settings › Advanced › Backup. **Export to a file** saves what is yours, the items you added, your labels, and your
+classes' colours and nicknames, as one file in your Downloads folder. On the other computer, install Birdbrain,
+sign in, and **Import a file…**. Everything from Moodle and your email comes back by itself, so it isn't in the
+file. Importing the same file twice changes nothing.
 
 ## Updates
 

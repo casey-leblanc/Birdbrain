@@ -899,6 +899,14 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
                '<button type="button" class="btn" id="scan-stop" hidden>Stop</button></div>'
                '<p class="hint" id="scan-msg" aria-live="polite"></p>')
         + fold("keywords", "Hidden keywords", "Words that send a card to Archived", keywords)
+        + fold("backup", "Backup", "Your own items and labels, in one file",
+               '<p class="hint">Export what is yours: the items you added, your labels, and your classes’ colours and '
+               'nicknames. Import the file on another computer to have them there too. Everything from Moodle and your '
+               'email comes back by itself once you sign in, so it isn’t in the file.</p>'
+               '<div class="btn-row"><button type="button" class="btn" id="backup-export">Export to a file</button>'
+               '<button type="button" class="btn" id="backup-import">Import a file…</button>'
+               '<input type="file" id="backup-file" accept=".json,application/json" hidden aria-label="A Birdbrain backup file"></div>'
+               '<p class="hint" id="backup-msg" aria-live="polite"></p>')
         + fold("files", "Files", "The log and the settings file",
                '<p class="hint">The log says what each scan did. The settings file holds the scan interval, how far ahead '
                'to look and other options.</p>'
@@ -2573,6 +2581,19 @@ var soundOn=document.getElementById('sound-on');soundOn.checked=PREFS.sound!==fa
 soundOn.addEventListener('change',function(){PREFS.sound=soundOn.checked;savePrefs({sound:soundOn.checked});});
 document.getElementById('sound-test').addEventListener('click',function(){api('/api/sound').catch(function(e){toast(e.message);});});
 
+/* Settings > Advanced > Backup: export saves a file to Downloads; import reads the chosen file here and hands it over */
+(function(){var out=document.getElementById('backup-export');if(!out)return;
+  var msg=document.getElementById('backup-msg'),file=document.getElementById('backup-file');
+  function say(e){msg.textContent=e.message;}
+  out.addEventListener('click',function(){api('/api/backup',{export:true}).then(say).catch(say);});
+  document.getElementById('backup-import').addEventListener('click',function(){file.value='';file.click();});
+  file.addEventListener('change',function(){var f=file.files[0];if(!f)return;
+    if(f.size>5e6){msg.textContent="That file is too big to be a Birdbrain backup.";return;}
+    f.text().then(function(t){var data;try{data=JSON.parse(t);}catch(e){throw new Error("That isn't a Birdbrain backup file. Choose the Birdbrain-backup-….json you exported.");}
+      return api('/api/backup',{'import':data});})
+    .then(function(r){msg.textContent=r.message;PREFS.labels=(r.prefs||PREFS).labels;return refreshBoard();}).catch(say)
+    .then(function(){file.value='';});});   /* so the same file can be chosen again */
+})();
 /* Report a problem: every file that would go in the zip is listed with its whole text; Save makes the zip from
    exactly what is shown. Nothing is sent anywhere. */
 var problemNote=document.getElementById('problem-note'),problemFiles=document.getElementById('problem-files'),

@@ -31,6 +31,7 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 
 import appwindow
+import backup
 import buildinfo
 import filters
 import hotkey
@@ -337,7 +338,14 @@ class App:
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
                 "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update,
                 "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide, "notifications": self.api_notifications,
-                "telegram": self.api_telegram, "problem": self.api_problem}
+                "telegram": self.api_telegram, "problem": self.api_problem, "backup": self.api_backup}
+
+    def api_backup(self, body: dict) -> dict:
+        """Settings > Advanced > Backup (backup.py): export what is the student's own to a file, or import one."""
+        out = backup.action(self.store, body, reveal=_reveal)
+        if "import" in body:
+            self._refresh_view()
+        return out
 
     def api_problem(self, body: dict) -> dict:
         """Report a problem (trouble.py): what would go in the zip, or the zip itself, saved and shown in its folder.

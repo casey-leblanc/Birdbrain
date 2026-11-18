@@ -165,7 +165,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
 - [x] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
 - [x] 10. The states in between, each in one line
-- [ ] 11. Backup: export and import personal items and labels
+- [x] 11. Backup: export and import personal items and labels
 - [ ] 12. Access: keyboard, focus, contrast, names, text size
 - [ ] 13. Anything else worth it, one at a time
 
@@ -259,3 +259,7 @@ One test for everything here: does it help a student see what to do and start on
   next scan comes in five minutes instead of an hour.
 - The list's own in-between states were already there and are now held by tests: nothing due today, nothing left
   for today, all clear with what is next, and the first scan saying what it is reading.
+- Backup (`backup.py`) holds only what no scan can bring back: the student's own items (open and done), their
+  labels, and their classes' colours and nicknames. It is plain JSON in Downloads. Import adds what isn't there:
+  an item with the same title, time and label is left alone, so importing twice changes nothing, and what is
+  already set on the new computer is never overwritten.
