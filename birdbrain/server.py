@@ -28,6 +28,7 @@ import glass
 import planner
 import prefs
 import quickwrite
+import repeats
 import snooze
 from store import COURSE_CODE, LABEL_ID, WHAT, Item, Store
 
@@ -71,11 +72,15 @@ class ListServer:
 
     # --- API actions -------------------------------------------------------------
     def set_done(self, body: dict) -> dict:
-        ok = self.store.set_done(str(body.get("id", "")), bool(body.get("done")))
+        item_id, done = str(body.get("id", "")), bool(body.get("done"))
+        ok = self.store.set_done(item_id, done)
         if not ok:
             raise ValueError("No such item")
         self.on_change()
-        return {"ok": True}
+        out = {"ok": True}
+        if done and (nxt := self.store.next_of(item_id)):   # a repeating item: say when the next one is
+            out["next"] = {"id": nxt.id, "day": quickwrite.say_day(nxt.due.date(), date.today())}
+        return out
 
     def _manual(self, body: dict, item_id: str) -> Item:
         """Build a validated item you're adding or editing."""
@@ -95,7 +100,13 @@ class ListServer:
         label = str(body.get("label") or "")
         if label and not LABEL_ID.fullmatch(label):
             raise ValueError("Unknown label.")
-        return Item(id=item_id, source="manual", kind=kind, title=title, label=label, timed=bool(t),
+        if "repeat_text" in body:   # the Repeats box in a card's details: the same words quick write reads
+            repeat = repeats.parse(str(body.get("repeat_text") or "")[:60], day)
+        else:
+            repeat = str(body.get("repeat") or "")
+            if repeat and not repeats.valid(repeat):
+                raise ValueError("Unknown repeat.")
+        return Item(id=item_id, source="manual", kind=kind, title=title, label=label, timed=bool(t), repeat=repeat,
                     due=datetime.combine(day, time.fromisoformat(t) if t else time(23, 59)),
                     course=" ".join(str(body.get("course", "")).split())[:40],
                     detail=" ".join(str(body.get("notes", "")).split())[:300], level=level)
@@ -125,7 +136,8 @@ class ListServer:
         no_time = not (item.timed if item.timed is not None else (item.due.hour, item.due.minute) != (23, 59))
         return {"ok": True, "item": {"id": item.id, "title": item.title, "kind": kind, "date": item.due.date().isoformat(),
                                      "time": "" if no_time else f"{item.due:%H:%M}", "course": item.course,
-                                     "notes": item.detail, "label": item.label, "done": item.done_at is not None}}
+                                     "notes": item.detail, "label": item.label, "repeat": item.repeat,
+                                     "done": item.done_at is not None}}
 
     def restore_item(self, body: dict) -> dict:
         """Undo a delete: the same item back under its own id."""
@@ -209,6 +221,7 @@ class ListServer:
         got = quickwrite.read(text, now, self.courses(), prefs.label_names(prefs.load(self.store)), skip)
         out = {"ok": True, "title": got.title, "date": got.day.isoformat(), "time": f"{got.time:%H:%M}" if got.time else "",
                "label": got.label, "course": got.course, "kind": got.kind, "day": quickwrite.say_day(got.day, now.date()),
+               "repeat": got.repeat,
                "chips": [{"what": c.what, "text": c.text, "says": c.says, "end": c.end} for c in got.chips]}
         if body.get("save"):
             if not got.title:

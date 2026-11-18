@@ -8,6 +8,7 @@
 - A morning list (07:30 unless changed): what's overdue and what's due today. Nothing due, nothing said.
 - An evening check (19:00): what's due before tomorrow mid-morning, so a 7 AM deadline isn't a surprise.
 - One before a test: the day before an exam, three hours before a quiz closes.
+- A heavy day ahead, once and early: "Thursday is heavy: 4 due · 1 exam", two or three days before (dayload.py).
 - New work found by a scan, as one line however many there are.
 
 This module only decides what to say and when; it keeps what it has already said in the store, so each thing is said
@@ -21,6 +22,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 
+import dayload
 import planner
 import report
 from config import Settings
@@ -176,10 +178,30 @@ class Notices:
         self._say("tests", said)
         return out
 
+    # --- a heavy day ahead, said once and early ----------------------------------------------------------------------
+    def _heavy(self, now: datetime) -> list[Notice]:
+        t = hhmm(self.settings.morning_list)
+        if not t or now < datetime.combine(now.date(), t):     # it goes with the morning list; no morning list, no call
+            return []
+        said = [d for d in (self._said("heavy") or []) if d >= now.date().isoformat()]   # forget days gone by
+        out, today = [], now.date()
+        board = report.build(self.store, self.settings, now)
+        by_day = {g.day: g.items for c in board.columns for g in c.groups if g.day}
+        for ahead in (2, 3):
+            day = today + timedelta(days=ahead)
+            items = by_day.get(day) or []
+            if day.isoformat() in said or not dayload.heavy(items, report.test_level):
+                continue
+            said.append(day.isoformat())
+            out.append(Notice(f"heavy:{day.isoformat()}", f"{day:%A} is heavy", dayload.words(items, report.test_level),
+                              [i.id for i in items]))
+        self._say("heavy", said)
+        return out
+
     def due(self, now: datetime | None = None) -> list[Notice]:
         """Call every minute or so. What's returned has been marked as said."""
         now = now or datetime.now()
-        return self._lists(now) + self._tests(now)
+        return self._lists(now) + self._tests(now) + self._heavy(now)
 
     # --- after a scan --------------------------------------------------------------------------------------------
     def new_work(self, new: list[Item], now: datetime | None = None) -> Notice | None:

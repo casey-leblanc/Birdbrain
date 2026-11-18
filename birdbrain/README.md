@@ -53,6 +53,8 @@ The list is the whole window. Three columns:
 - **This week**: the next five days, a group for each day.
 - **Later**: everything further out, in date order.
 
+Beside each day's name is its load in a few words, "3 due · 1 exam", in bold when the day is a heavy one.
+
 Each card shows the title, the course (CHEM 1212), and the time it is due. Tags say the rest: a red, amber or
 yellow time for overdue, today and tomorrow; **exam** or **quiz** on tests, with **in 5 days** while one is still
 a few days off; **date unsure** when the day was worked out from words like "Friday" rather than stated. A title
@@ -126,6 +128,9 @@ Birdbrain reads the line as you type and shows what it understood in chips under
 - **A label**: `#life`, `#work`, `#appointment`, `#extracurricular` (the start is enough: `#app`).
 - **A class**: `@chem` finds your CHEM course.
 - **A type**: start with `quiz` or `exam` ("quiz ch 5 fri").
+- **How often**: `every mon wed`, `every day`, `weekdays`, `weekly`, `monthly on the 1st`. The item repeats:
+  tick it off and the next one appears (`gym every mon wed 6pm`, `rent monthly on the 1st`). There is only ever
+  one of it on your list. A card's Details has a **Repeats** box to change it or clear it.
 
 Everything else is the title. If it reads a word you meant as plain text, press **Backspace** right after the
 word and it is handed back. **Ctrl+Enter** saves and stays open for the next one; **Esc** closes. You can fill in
@@ -192,6 +197,7 @@ They are on from the start, with nothing to set up. Each is one short line by th
   surprise.
 - **Before a test**: the day before an exam (`Exam tomorrow at 9:30 AM: Math Exam 2`), and three hours before a
   quiz closes.
+- **A heavy day ahead**, once, two or three days before: `Thursday is heavy: 4 due · 1 exam`.
 - **New work** a scan finds, as one line however many there are.
 
 Click a notification and Birdbrain opens on that card. Settings › Notifications changes the two times (clear one

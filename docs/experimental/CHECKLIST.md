@@ -160,8 +160,8 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 3. Telegram under Advanced, off by default, no AI: one-time code, Done buttons, texting adds an item
 - [x] 4. Search and commands: Ctrl+K or `/`
 - [x] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
-- [ ] 6. Repeating personal items from quick write
-- [ ] 7. Each day says its load; a heavy day ahead is called out once
+- [x] 6. Repeating personal items from quick write
+- [x] 7. Each day says its load; a heavy day ahead is called out once
 - [ ] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
 - [ ] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
 - [ ] 10. The states in between, each in one line
@@ -221,3 +221,16 @@ One test for everything here: does it help a student see what to do and start on
   pointed at or focused, like Archive, so cards stay clean.
 - The list now also rebuilds itself when the date changes, so cards come back from snooze (and Today becomes
   yesterday) without anything else having to happen.
+- Repeating items: the rule is a short string on the card (`daily`, `weekly:0,2`, `monthly:1`). There is only ever
+  one card of a repeating item: ticking it makes the next (in the store, so the PC, a drag to Completed and the
+  phone all do it), unticking takes that one away again. A late tick never makes a card for a day gone by.
+- With no day typed, a repeating item starts the first time it comes round (today, if today is one of its days and
+  its time hasn't passed). "weekly" and "monthly" alone take their day from the item's own date.
+- "Every other week" and the like are not read; the words stay in the title rather than being half understood.
+- The Repeats box in Details takes the same words as quick write, instead of a second way of saying it.
+- A day's load is drawn beside its name by the stylesheet (from `data-load`), so the heading's own text stays the
+  day's name for screen readers' "Thursday, second of four" and for everything that looks a day up by name.
+  A day with one card says nothing: the card says it.
+- Heavy is four points: a thing to hand in or a quiz is one, an exam two; things to attend don't count. A heavy
+  day is said once, two or three days ahead, with the morning list (so not at all if that is turned off), and its
+  load is bold on the page. Today and tomorrow are never "heavy ahead": the morning and evening lines cover them.

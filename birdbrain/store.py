@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -62,6 +63,7 @@ class Item:
     planned: date | None = None  # "I'll do it then": the day the student dragged it to, earlier than it's due
     rank: float | None = None    # its place among that day's cards, once the student has put them in order
     snoozed: date | None = None  # hidden until this day (snooze.py); on that day the card says it's back
+    repeat: str = ""             # for your own items: "weekly:0,2", "monthly:1", "daily" (repeats.py)
 
 
 def text_hash(text: str) -> str:
@@ -69,7 +71,7 @@ def text_hash(text: str) -> str:
 
 
 _COLUMNS = ("id, source, kind, title, due, course, url, detail, confidence, needs_review, level, done_at, label, timed, "
-            "planned, rank, snoozed")
+            "planned, rank, snoozed, repeat")
 LABEL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")   # what a label's id looks like
 
 
@@ -108,6 +110,8 @@ class Store:
                 self._db.execute("ALTER TABLE items ADD COLUMN rank REAL")
             if "snoozed" not in have:   # 2.0: hidden until a day (snooze.py)
                 self._db.execute("ALTER TABLE items ADD COLUMN snoozed TEXT")
+            if "repeat" not in have:   # 2.0: your own items can repeat (repeats.py)
+                self._db.execute("ALTER TABLE items ADD COLUMN repeat TEXT DEFAULT ''")
 
     def _changed(self) -> None:
         self.version += 1
@@ -180,19 +184,19 @@ class Store:
             if exists:
                 self._db.execute(
                     """UPDATE items SET source=?, kind=?, title=?, due=?, course=?, url=?,
-                       detail=?, confidence=?, needs_review=?, level=?, label=?, timed=?, last_seen=? WHERE id=?""",
+                       detail=?, confidence=?, needs_review=?, level=?, label=?, timed=?, repeat=?, last_seen=? WHERE id=?""",
                     (item.source, item.kind, item.title, due, item.course, item.url,
                      item.detail, item.confidence, int(item.needs_review), item.level, item.label,
-                     None if item.timed is None else int(item.timed), now, item.id),
+                     None if item.timed is None else int(item.timed), item.repeat, now, item.id),
                 )
             else:
                 self._db.execute(
                     """INSERT INTO items (id, source, kind, title, due, course, url, detail, confidence,
-                       needs_review, level, done_at, label, timed, first_seen, last_seen)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)""",
+                       needs_review, level, done_at, label, timed, repeat, first_seen, last_seen)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?,?)""",
                     (item.id, item.source, item.kind, item.title, due, item.course, item.url,
                      item.detail, item.confidence, int(item.needs_review), item.level, item.label,
-                     None if item.timed is None else int(item.timed), now, now),
+                     None if item.timed is None else int(item.timed), item.repeat, now, now),
                 )
         self._changed()
         return not exists
@@ -207,11 +211,36 @@ class Store:
             return self._db.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone() is not None
 
     def set_done(self, item_id: str, done: bool) -> bool:
+        """Tick an item off, or untick it. Ticking a repeating item of yours brings the next one; unticking it takes
+        that one away again, so there is only ever one of it on the list."""
+        was = self.get(item_id)
         stamp = datetime.now().isoformat(timespec="seconds") if done else None
         with self._lock, self._db:
             cur = self._db.execute("UPDATE items SET done_at=? WHERE id=?", (stamp, item_id))
         self._changed()
+        if was and was.source == "manual" and was.repeat and bool(was.done_at) != done:
+            self._repeat(was, done)
         return cur.rowcount > 0
+
+    def next_of(self, item_id: str) -> Item | None:
+        """The card that ticking this repeating one brought, if it's still there."""
+        nxt = self.get_meta(f"repeat:next:{item_id}")
+        return self.get(nxt) if nxt else None
+
+    def _repeat(self, item: Item, done: bool) -> None:
+        import repeats
+        if not done:   # unticked: the one it brought goes, unless that has been ticked off or moved on itself
+            nxt = self.next_of(item.id)
+            if nxt and not nxt.done_at:
+                self.delete(nxt.id)
+            self.set_meta(f"repeat:next:{item.id}", "")
+            return
+        day = repeats.next_after(item.repeat, item.due.date(), date.today())
+        nxt = Item(id=f"manual:{uuid.uuid4().hex[:12]}", source="manual", kind=item.kind, title=item.title,
+                   due=datetime.combine(day, item.due.time()), course=item.course, detail=item.detail, level=item.level,
+                   label=item.label, timed=item.timed, repeat=item.repeat)
+        self.upsert(nxt)
+        self.set_meta(f"repeat:next:{item.id}", nxt.id)
 
     def snooze(self, item_id: str, until: date | None) -> date | None:
         """Hide a card until a day (None wakes it now). Returns what it was before, so the change can be undone."""
@@ -353,4 +382,4 @@ def _item(r) -> Item:
     return Item(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4]) if r[4] else None, r[5], r[6], r[7],
                 r[8], bool(r[9]), r[10] or "", datetime.fromisoformat(r[11]) if r[11] else None, r[12] or "",
                 None if r[13] is None else bool(r[13]), date.fromisoformat(r[14]) if r[14] else None, r[15],
-                date.fromisoformat(r[16]) if r[16] else None)
+                date.fromisoformat(r[16]) if r[16] else None, r[17] or "")

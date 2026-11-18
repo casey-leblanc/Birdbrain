@@ -11,6 +11,8 @@ What is read, and taken out of the title:
   means as 5 PM; "at 9" as 9 AM).
 - #label, matched against the student's labels by name or the start of one (#app finds Appointment).
 - @class, matched against the student's own course codes (@chem finds CHEM 1202, if there's one CHEM course).
+- how often: "every mon wed", "every day", "weekdays", "weekly", "monthly on the 1st" (repeats.py). With no day
+  typed, the item starts the first time that comes round.
 - a type word at the very start: "quiz ch 5" is a quiz and "exam 2" an exam (the word stays in the title);
   "event career fair" is an event.
 
@@ -25,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 import reader
+import repeats
 
 MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -41,7 +44,7 @@ LEAD_INS = ("due", "by", "on", "at", "before")   # "essay due fri": the lead-in 
 
 @dataclass
 class Chip:
-    what: str      # day | time | label | class | kind
+    what: str      # day | time | label | class | kind | repeat
     text: str      # the words typed ("next tue"); "" for the day when none was typed
     says: str      # how it was understood ("Tuesday, Nov 24")
     end: int = 0   # where those words end in the line, so Backspace right after them can hand them back
@@ -55,6 +58,7 @@ class Read:
     label: str = ""          # a label's id
     course: str = ""         # "CHEM 1202"
     kind: str = "assignment"  # assignment | quiz | exam | event
+    repeat: str = ""          # "weekly:0,2", "monthly:1", "daily" (repeats.py); "" for a one-off
     chips: list[Chip] = field(default_factory=list)
 
     @property
@@ -189,6 +193,10 @@ def read(text: str, now: datetime, courses: list[str] | None = None, labels: dic
         elif w.startswith("@") and "class" not in chips and (code := _course(w[1:], courses)):
             out.course = code
             take("class", i, 1, code)
+        # --- how often: "every mon wed", "monthly on the 1st" (repeats.py)
+        elif "repeat" not in chips and (hit := repeats.find(low, i)) and free(i, hit[1]):
+            out.repeat = hit[0]
+            take("repeat", i, hit[1], "")
         # --- a day
         elif "day" not in chips and w in TODAY:
             out.day = today + timedelta(days=TODAY[w])
@@ -255,7 +263,17 @@ def read(text: str, now: datetime, courses: list[str] | None = None, labels: dic
         out.kind = "event"   # an appointment is somewhere to be, not work that goes overdue
     title = " ".join(words[k][0] for k in rest).strip(" ,;")
     out.title = title[:1].upper() + title[1:]
+    if out.repeat:
+        # With no day typed, a repeating item starts the first time it comes round: today, if that's one of its
+        # days and its time hasn't gone by. "weekly" and "monthly" alone take their day from the item's own.
+        if "day" not in chips:
+            start = today + timedelta(days=1) if out.time and datetime.combine(today, out.time) <= now else today
+            if repeats.valid(out.repeat):
+                out.day = repeats.on_or_after(out.repeat, start)
+                chips["day"] = Chip("day", "", say_day(out.day, today), 0)
+        out.repeat = repeats.settle(out.repeat, out.day)
+        chips["repeat"].says = repeats.say(out.repeat)
     if "day" not in chips:
         chips["day"] = Chip("day", "", "Today", 0)
-    out.chips = [chips[k] for k in ("kind", "day", "time", "label", "class") if k in chips]
+    out.chips = [chips[k] for k in ("kind", "day", "time", "repeat", "label", "class") if k in chips]
     return out

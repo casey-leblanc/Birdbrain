@@ -27,6 +27,7 @@ from datetime import date, datetime, timedelta
 
 import commands
 import custom
+import dayload
 import dragdrop
 import feel
 import filters
@@ -37,6 +38,7 @@ import prefs as prefs_mod
 import theme
 from config import REPORT_PATH, Settings
 import reader
+import repeats
 import snooze
 from store import Item, Store
 
@@ -256,7 +258,7 @@ def _manual_fields(i: Item) -> str:
     no_time = not has_time(i)
     return json.dumps({"title": i.title, "kind": kind, "date": i.due.date().isoformat(),
                        "time": "" if no_time else f"{i.due:%H:%M}", "course": i.course, "notes": i.detail,
-                       "label": i.label})
+                       "label": i.label, "repeat": i.repeat, "repeats": repeats.say(i.repeat).lower()})
 
 
 def _label(label_id: str, labels: dict | None) -> str:
@@ -300,6 +302,8 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
         meta += f'<time class="w{" late" if urgent else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">{e(_when(i, now, when))}</time>'
     if i.needs_review and not (reason or done):
         meta += '<span class="unsure" title="This date was read from text; double-check it">date unsure</span>'
+    if i.repeat and not reason:
+        meta += f'<span class="rep" title="When you tick this off, the next one appears">{e(repeats.say(i.repeat).lower())}</span>'
     if not (reason or done) and snooze.back_today(i, now.date()):
         meta += '<span class="snz" title="You snoozed this until today">back from snooze</span>'
     if not (reason or done):   # any item can be put out of the way; it waits in Archived
@@ -399,7 +403,12 @@ def _column(c: Column, now: datetime, courses: dict, b: Board | None = None, set
             due = f' data-due="{g.due}"' if g.due else ""
             day = f' data-day="{g.day.isoformat()}"' if g.day else ""
             bare = "" if g.items else " empty"
-            label = f'<h3 class="grp{" urgent" if g.urgent else ""}{bare}"{due}{day}>{e(g.label)}</h3>' if g.label else ""
+            # a day says its load in a few words, beside its name (drawn by the stylesheet, so the name stays the name)
+            said = dayload.words(g.items, test_level) if g.day else ""
+            load = f' data-load="{e(said)}"' if said else ""
+            weighty = " heavy" if g.day and g.day > now.date() and dayload.heavy(g.items, test_level) else ""
+            label = (f'<h3 class="grp{" urgent" if g.urgent else ""}{bare}{weighty}"{due}{day}{load}>{e(g.label)}</h3>'
+                     if g.label else "")
             body += f'{label}<ul class="day{bare}"{day}>{rows}</ul>'
     if c.title == "Now" and b is not None and settings is not None:
         if not c.count:
@@ -924,6 +933,8 @@ def _item_dialog(b: Board, now: datetime, labels: list | None = None) -> str:
         '<label class="field"><span>Course <em>optional</em></span>'
         f'<input name="course" list="course-list" maxlength="40" autocomplete="off"></label><datalist id="course-list">{options}</datalist>'
         f'<label class="field"><span>Label <em>optional</em></span><select name="label">{label_options}</select></label>'
+        '<label class="field"><span>Repeats <em>optional</em></span><input name="repeats" maxlength="60" autocomplete="off" '
+        'spellcheck="false" placeholder="every mon wed, daily, monthly on the 1st"></label>'
         '<label class="field"><span>Notes <em>optional</em></span><input name="notes" maxlength="300" autocomplete="off"></label>'
         '<p class="hint" id="locked-note" hidden></p>'
         '<p class="form-error" role="alert"></p>'
@@ -1484,6 +1495,9 @@ TOOLS_CSS = """
 .field.time{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;max-width:460px}
 .field.time input{width:auto;flex:none}
 .notify-rows.off{opacity:.5}
+.grp[data-load]::after{content:attr(data-load);margin-left:auto;font-size:.75rem;font-style:normal;font-weight:400;color:var(--q-muted);white-space:nowrap}
+.grp.heavy[data-load]::after{font-weight:700;color:var(--q-fg)}
+.rep{font-size:.75rem;color:var(--q-muted);white-space:nowrap}.rep::before{content:"↻ "}
 .steps{margin:14px 0 6px;padding:0 0 0 1.6em;display:grid;gap:14px}
 .steps[hidden]{display:none}.steps li{padding-left:4px}.steps li.later{opacity:.45}.steps li.later form,.steps li.later .btn-row,.steps li.done form{display:none}
 .steps li.done::marker{content:"✓  "}
@@ -2031,14 +2045,17 @@ on('change','.row[data-id] .tick',function(box){
           from=!done&&move?fromSpot(li):null,before=move?layout():null;
       if(done&&move){g=ghost(li);li.classList.add('lifted');up=lift(g);}   /* it lifts while Birdbrain saves */
       else if(!move)li.classList.add('leaving');
+      var saved=null;
       api('/api/done',{id:id,done:done})
-        .then(function(){return refreshBoard(done?{id:next,part:'.tick'}:{id:id,part:'.tick'},{glide:before,skip:done?null:id});})
+        .then(function(r){saved=r;return refreshBoard(done?{id:next,part:'.tick'}:{id:id,part:'.tick'},{glide:before,skip:done?null:id});})
         .then(function(){return up;})
         .then(function(){
           if(done){var clear=left>0&&todayLeft()===0;
             if(clear)awaitBird();
             (g?toBin(g,id):Promise.resolve(pulseBin())).then(function(){if(clear)birdLands();},function(){});   /* stopped by Undo */
-            toast(clear?'Moved to Completed. Nothing else is due today.':'Moved to Completed',function(){putBack(id);});}
+            toast(saved&&saved.next?'Moved to Completed. The next one is '+saved.next.day.replace(/^(Today|Tomorrow)$/,function(d){return d.toLowerCase();})+'.'
+              :clear?'Moved to Completed. Nothing else is due today.':'Moved to Completed',function(){putBack(id);});
+            if(saved&&saved.next){var nx=inList(saved.next.id);if(nx)dropIn(nx);}}
           else{home(id,from);toast('Put back on your list',function(){tickAgain(id);});}
         }).catch(function(err){if(g)g.f.remove();box.checked=!done;li.classList.remove('leaving','lifted');toast("Couldn't save: "+err.message);});
     }
@@ -2360,7 +2377,7 @@ setTabs.forEach(function(t,i){t.addEventListener('click',function(){showTab(t);}
 var editing=null,editFields=null;
 /* The details sheet. Yours: every field can be changed. From one of your sites: shown but locked, except what it
    is, which you can say, and your answer goes for the others like it in that course. */
-var lockedId=null,LOCKABLE=['title','date','time','course','label','notes'];
+var lockedId=null,LOCKABLE=['title','date','time','course','label','notes','repeats'];
 function lockForm(on,from){LOCKABLE.forEach(function(n){itemForm.elements[n].disabled=on;});
   itemForm.querySelector('button[type=submit]').hidden=on;itemForm.classList.toggle('locked',on);
   itemForm.querySelector('[data-close].act:not(.sheet-head *)').textContent=on?'Close':'Cancel';
@@ -2372,7 +2389,7 @@ function openDetails(li){if(!li||!LIVE)return;
   if(!li.dataset.details)return;
   var d=JSON.parse(li.dataset.details),f=itemForm.elements;editing=null;editFields=null;lockedId=li.dataset.id;
   itemForm.querySelector('.form-error').textContent='';document.getElementById('add-title').textContent='Details';
-  f.title.value=d.title;f.kind.value=d.kind;f.date.value=d.date;f.time.value=d.time;f.course.value=d.course;f.label.value='';f.notes.value=d.notes;
+  f.title.value=d.title;f.kind.value=d.kind;f.date.value=d.date;f.time.value=d.time;f.course.value=d.course;f.label.value='';f.notes.value=d.notes;f.repeats.value='';
   itemForm.dataset.lastMode='edit';lockForm(true,d.from);itemDlg.showModal();
   (itemForm.querySelector('input[name=kind]:checked')||f.kind[0]).focus();}
 itemForm.querySelectorAll('input[name=kind]').forEach(function(r){r.addEventListener('change',function(){
@@ -2388,7 +2405,7 @@ function openItemForm(fields,id){
   document.getElementById('add-title').textContent=id?'Details':'Add item';
   itemForm.querySelector('button[type=submit]').textContent=id?'Save changes':'Add item';
   if(fields){f.title.value=fields.title;f.kind.value=fields.kind;f.date.value=fields.date;f.time.value=fields.time;
-    f.course.value=fields.course;f.notes.value=fields.notes;f.label.value=fields.label||'';}
+    f.course.value=fields.course;f.notes.value=fields.notes;f.label.value=fields.label||'';f.repeats.value=fields.repeats||'';}
   else if(itemForm.dataset.lastMode==='edit'){itemForm.reset();}
   itemForm.dataset.lastMode=id?'edit':'add';
   itemDlg.showModal();f.title.focus();
@@ -2397,7 +2414,8 @@ itemForm.addEventListener('submit',function(ev){
   ev.preventDefault();
   if(itemForm.classList.contains('locked'))return;
   var f=itemForm.elements,err=itemForm.querySelector('.form-error'),data={title:f.title.value.trim(),kind:f.kind.value,
-    date:f.date.value,time:f.time.value,course:f.course.value.trim(),notes:f.notes.value.trim(),label:f.label.value};
+    date:f.date.value,time:f.time.value,course:f.course.value.trim(),notes:f.notes.value.trim(),label:f.label.value,
+    repeat_text:f.repeats.value.trim()};
   if(!data.title){err.textContent='Give the item a title.';f.title.focus();return;}
   if(!data.date){err.textContent='Pick a due date.';f.date.focus();return;}
   if(editing)data.id=editing;
