@@ -59,3 +59,25 @@ for your account".
 The app is unsigned, so Windows shows "Windows protected your PC" on first run, and the README tells students to
 choose More info › Run anyway. Signing removes that. It needs a code-signing certificate in the owner's name;
 project 5 lists the exact options and commands for Windows and Mac together.
+
+## 6. The motion: yours to approve
+
+A film of the list being used was made for you (not kept in the repository). To make it again:
+`python tests/ui/preview_recording.py some-folder` (needs Playwright's Chromium and ffmpeg). It shows Glass at
+night and Focus by day at Full, then motion Off.
+
+What to decide, and where each one is changed:
+
+1. The ripple and the sheen (Glass, Full only): too much, too little, or gone. Five numbers at the top of
+   `birdbrain/feel.py`: `--ripple-size`, `--ripple-time`, `--ripple-light`, `--sheen-size`, `--sheen-light`.
+   To remove either for good, make `lively()` in the same file return false, or delete its few lines.
+2. How far a carried card lifts and leans: `.fly.dragging .row` and `lean` in `birdbrain/dragdrop.py`.
+3. The shared timings and the spring: the first lines of `TOKENS_CSS` in `birdbrain/motion.py`.
+
+And on a real PC, since only a headless browser has tried it:
+
+1. Drag a card up and down its day, onto another day, and onto Completed at the bottom of the window. It should
+   keep up with the mouse with no stutter.
+2. Drag something due today onto tomorrow: it should shake, go back, and say why.
+3. On a touch screen, press and hold a card, then drag. A quick swipe should still scroll the list.
+4. Press M on a card, move it with the arrows, press Enter.

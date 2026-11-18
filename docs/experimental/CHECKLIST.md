@@ -109,7 +109,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 7. Focus: the same feedback, quieter
 - [x] 8. Smooth with 200 cards: no long frame, no layout work in the drag loop
 - [x] 9. UI tests with real pointer events for items 2 to 5
-- [ ] 10. A screen recording for the owner, in Glass night and Focus day, with motion on and off
+- [x] 10. A screen recording for the owner, in Glass night and Focus day, with motion on and off
 
 ### Decisions
 
@@ -141,6 +141,9 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   repainted to make either.
 - Whenever the list changes (a scan, an add, a filter), what was already there glides to its new place and what is
   new fades in; only cards near the window are animated.
+- The film is made by `tests/ui/preview_recording.py` from the frames Chromium hands over (Playwright's own
+  recorder wrote nothing here), put together with ffmpeg. It runs 50 seconds, not 40: every kind of move is in it.
+  It is sent to the owner and not committed; NEEDS-HUMAN 6 says what is theirs to approve and where to tune it.
 - The keys sheet is wider (780px) so the two new keys still fit on one screen.
 - The spring is worked out from a damped spring (about 5% past, then settled) and written as CSS `linear()`;
   Safari 16 and anything else without `linear()` gets a `cubic-bezier` with a little overshoot.
