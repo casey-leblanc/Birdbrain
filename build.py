@@ -20,9 +20,10 @@ import sys
 import zipfile
 from pathlib import Path
 
-VERSION = "1.1.2"
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "birdbrain"
+sys.path.insert(0, str(SRC))
+from version import VERSION  # noqa: E402
 WORK = Path(os.environ["LOCALAPPDATA"]) / "Birdbrain-build"
 OUT = ROOT / "dist"
 
