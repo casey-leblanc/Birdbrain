@@ -69,9 +69,36 @@ with a dotted underline opens the item in Moodle or Outlook.
 - **Your own items**: press **Space** and type. See **Quick write** below. A card you added has **Details**,
   with Edit and Delete.
 
+### Moving cards
+
+Drag a card and it lifts and follows the pointer; the cards around it part to show where it will land. On a touch
+screen, press and hold first.
+
+- **Within its day**: drop it above or below the others. The order is yours and it stays.
+- **To an earlier day**: plan to do it sooner. The card moves to that day and still says when it is really due
+  ("due Fri 11:59 PM").
+- **Not later than it is due**: something from Moodle or your email can't be planned past its deadline. The card
+  shakes, goes back, and says why. Something you added yourself can go to any day: its date changes.
+- **Completed** and **Archived** appear at the bottom of the window while you drag. Drop a card on one. To bring one
+  back, open that bin and drag the card onto a day.
+- **Esc**, or letting go away from the list, puts the card back.
+- Every move offers **Undo** for 6 seconds (or press Ctrl+Z).
+
+Without a mouse: press **M** on a card to pick it up, move it with the arrow keys (up and down through the days,
+left and right between the columns), **Enter** to drop it, **Esc** to put it back. **D** sends a card to
+Completed and **A** to Archived. A screen reader hears each step ("Thursday, second of four").
+
+### Motion
+
+Settings › Look › Motion has three levels. **Full**: cards lift, glide and spring into place, and on Glass a ripple
+of light spreads from where a card lands or is ticked, with a soft sheen under the pointer. **Subtle**: cards still
+move to show what happened, without the ripple and the sheen. **Off**: nothing moves. If your computer is set to
+reduce motion, Birdbrain starts at Off.
+
 In the top corner of the list:
 
-- **The dot** is Birdbrain's status. It breathes while a scan runs and says what it is reading; it turns red, with
+- **The dot** is Birdbrain's status. It breathes slowly while Birdbrain is idle, faster while a scan runs, when it
+  also says what it is reading; it turns red, with
   the reason beside it, when something needs you. Point at it to see when the last scan finished. Click it to
   scan now.
 - **The menu** (⋯, or press M): Quick write, Add item, Settings, Scan now, Check for updates, Quit.
@@ -129,6 +156,8 @@ turn it off in Settings › App. If another program already uses it, Settings sa
 | E | The item's details |
 | O | Open the item in Moodle or Outlook |
 | A | Archive it, or show it again |
+| D | Send it to Completed |
+| M | Pick the item up: arrows move it, Enter drops it, Esc puts it back |
 | Ctrl+Z | Undo the last change |
 | # or @ | Show only one label or class |
 | ? | Show every key on one screen |

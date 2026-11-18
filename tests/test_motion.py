@@ -12,7 +12,7 @@ import report
 from config import Settings
 from server import ListServer
 
-AMBIENT = {"flap", "pulse", "scan-busy", "dot-breathe", "landed"}   # loops and marks that keep their own time
+AMBIENT = {"flap", "pulse", "scan-busy", "dot-breathe", "dot-rest", "landed"}   # loops and marks that keep their own time
 
 
 def pages():

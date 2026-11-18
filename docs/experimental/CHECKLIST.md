@@ -101,14 +101,14 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 ## 3. Drag and motion
 
 - [x] 1. One motion vocabulary (`motion.py`): shared timings and a spring, three levels, only transform and opacity
-- [ ] 2. Dragging with pointer events: pick up, lift, follow, neighbours part, spring into place, Esc, edge scroll
-- [ ] 3. Where a card can go: reorder in its day, Completed, Archived, an earlier day; a refused drop says why
-- [ ] 4. Undo after every drop, and Ctrl+Z
-- [ ] 5. The same with the keyboard: M, arrows, Enter, Esc, D, A, and what a screen reader hears
-- [ ] 6. Glass: ripple of light, sheen, the tick, the drop-in, smooth re-flow; Subtle drops ripple and sheen
-- [ ] 7. Focus: the same feedback, quieter
-- [ ] 8. Smooth with 200 cards: no long frame, no layout work in the drag loop
-- [ ] 9. UI tests with real pointer events for items 2 to 5
+- [x] 2. Dragging with pointer events: pick up, lift, follow, neighbours part, spring into place, Esc, edge scroll
+- [x] 3. Where a card can go: reorder in its day, Completed, Archived, an earlier day; a refused drop says why
+- [x] 4. Undo after every drop, and Ctrl+Z
+- [x] 5. The same with the keyboard: M, arrows, Enter, Esc, D, A, and what a screen reader hears
+- [x] 6. Glass: ripple of light, sheen, the tick, the drop-in, smooth re-flow; Subtle drops ripple and sheen
+- [x] 7. Focus: the same feedback, quieter
+- [x] 8. Smooth with 200 cards: no long frame, no layout work in the drag loop
+- [x] 9. UI tests with real pointer events for items 2 to 5
 - [ ] 10. A screen recording for the owner, in Glass night and Focus day, with motion on and off
 
 ### Decisions
@@ -120,5 +120,27 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   at once while what is inside fades and slides in.
 - Loops and marks that set their own pace (the bird's wings, the scanning dot, the scan bar, the bin's pulse, the
   "just added" mark) keep their own times; everything else uses the five shared ones.
+- A card's place is kept as two things of the student's own, which a scan never touches: `planned` (the day they
+  mean to do it) and `rank` (its order in that day). The deadline itself never moves for anything from a site.
+- A card from a site can't be planned later than it is due: the drop is refused with one line and a shake. One that
+  is already overdue can be planned for any day from today. A card the student added just changes its date.
+- Completed and Archived come up as a dock at the bottom of the window while a card is carried, because the bins
+  themselves are usually off screen in a long list. The Overdue group and the Later column aren't places to drop.
+- Days with nothing in them are drawn (hidden) for the next week, and come out as drop zones while a card is carried.
+- On a card, M now picks it up (anywhere else M still opens the menu). D sends it to Completed; A was already Archive.
+- Touch: press and hold (about a third of a second) picks a card up; a finger that moves first is scrolling.
+- The list is no longer rebuilt whole. `rebuild()` in the page changes only what differs, and cards keep their
+  identity; the list's clicks are handled by one listener each on the list. That is what keeps a drop under 50 ms
+  with 200 cards, and it means focus and running motion survive a refresh.
+- "No long frame" is tested as: no long task (over 50 ms of script or layout) while dragging, dropping and
+  filtering 200 cards, and not one layout read while the card only follows the pointer (the page counts its own
+  reads in `window.birdbrainMeasures`). Frame times in headless Chromium without a GPU say little, so only a loose
+  bound (250 ms) is put on them.
+- Ripple and sheen are Glass at Full only (`lively()` in `feel.py`), and tuned by five CSS variables at the top of
+  that file. The ripple is three discs scaled and faded; the sheen is one disc moved under the pointer: nothing is
+  repainted to make either.
+- Whenever the list changes (a scan, an add, a filter), what was already there glides to its new place and what is
+  new fades in; only cards near the window are animated.
+- The keys sheet is wider (780px) so the two new keys still fit on one screen.
 - The spring is worked out from a damped spring (about 5% past, then settled) and written as CSS `linear()`;
   Safari 16 and anything else without `linear()` gets a `cubic-bezier` with a little overshoot.

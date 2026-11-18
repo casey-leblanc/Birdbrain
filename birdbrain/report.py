@@ -27,6 +27,7 @@ from datetime import date, datetime, timedelta
 
 import custom
 import dragdrop
+import feel
 import filters
 import glass
 import motion
@@ -914,7 +915,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{motion.HEAD_JS}{head_js}</script>",
         f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
-        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}</style>",
+        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}{feel.CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
@@ -2097,7 +2098,7 @@ function readQuick(){var n=++qSeq;return api('/api/quick',{text:qLine.value,skip
   .catch(function(){});}
 function landed(r){var row=inList(r.id),undo=function(){api('/api/items/delete',{id:r.id}).then(function(){return refreshBoard();})
     .then(function(){toast('Removed “'+r.title+'”');}).catch(function(e){toast("Couldn't undo: "+e.message);});};
-  if(row){row.classList.add('landed');row.scrollIntoView({block:'nearest'});setTimeout(function(){row.classList.remove('landed');},1800);}
+  if(row){row.classList.add('landed');row.scrollIntoView({block:'nearest'});dropIn(row);setTimeout(function(){row.classList.remove('landed');},1800);}
   toast('Added “'+r.title+'” for '+r.day.toLowerCase().replace(/^([a-z]+day)/,function(d){return d.charAt(0).toUpperCase()+d.slice(1);})
     +(row?'':'. It will show on your list when it is closer.'),undo);}
 function saveQuick(stay){if(!qLine.value.trim())return;++qSeq;
@@ -2534,6 +2535,7 @@ settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){
   li.querySelector('.nick').addEventListener('input',function(ev){updateCourse(code,{nick:ev.target.value.trim()});});
   li.querySelector('.reset').addEventListener('click',function(){delete PREFS.courses[code];applyCourses();syncCourseInputs();saveCourse(code);});
 });
+/*FEEL*/
 /*DRAG*/
 bindBoard();
 
@@ -2563,5 +2565,5 @@ if(LIVE){
 })();"""
 
 # every script gets the same motion helpers (CALM, MS, EASE: motion.py)
-JS = JS.replace("/*DRAG*/", dragdrop.JS)
+JS = JS.replace("/*FEEL*/", feel.JS).replace("/*DRAG*/", dragdrop.JS)
 JS, CHROME_JS, SETUP_JS = (script.replace("/*MOTION*/", motion.SCRIPT) for script in (JS, CHROME_JS, SETUP_JS))
