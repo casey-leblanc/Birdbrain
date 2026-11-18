@@ -2,7 +2,7 @@
 
 Birdbrain keeps one list of your assignments, quizzes, exams and events from **Moodle** and **Outlook on the
 web** (and Gradescope and McGraw Hill Connect, if you turn them on). The list opens in Birdbrain's own window, and
-Birdbrain keeps scanning from the system tray while the window is closed.
+Birdbrain keeps scanning from the system tray (on a Mac, the menu bar) while the window is closed.
 
 > **Birdbrain is a student project. It is not affiliated with, endorsed by or supported by Louisiana State
 > University.**
@@ -10,6 +10,8 @@ Birdbrain keeps scanning from the system tray while the window is closed.
 This is the experimental version, 2.0. There is no AI in it and no key or account to set up.
 
 ## Install
+
+### Windows
 
 1. Unzip `Birdbrain-…-windows.zip` anywhere you like, for example your Documents folder.
 2. Run `Birdbrain.exe` in the `Birdbrain` folder. Windows may show a warning because the app isn't signed yet:
@@ -21,6 +23,31 @@ It needs Windows 10 or 11. The window uses Microsoft Edge's WebView2, which both
 opens in your web browser instead and a notification says why.
 
 To check a copy works without touching your data, run `Birdbrain.exe --selftest result.txt` and read `result.txt`.
+
+### Mac
+
+1. Open the `.dmg` for your Mac (`arm64` for Apple silicon, `x64` for Intel) and drag **Birdbrain** onto
+   **Applications**. Run it from Applications, not from inside the `.dmg`: it can't update itself from there.
+2. Open Birdbrain. The first time, macOS says it could not verify the app, because it isn't signed yet. Click
+   **Done**. Then open **System Settings › Privacy & Security**, scroll down to **Security**, click **Open Anyway**
+   beside "Birdbrain was blocked to protect your Mac", choose **Open Anyway** again, and enter your password or
+   use Touch ID. macOS remembers; you do this once. (On macOS 14 and older, right-click Birdbrain in Applications,
+   choose **Open**, then **Open**.)
+3. The welcome page offers to start Birdbrain when you sign in to your Mac, already ticked.
+
+It needs macOS 12 or newer. What is different on a Mac:
+
+- **Cmd** wherever this guide says Ctrl, and the bird sits in the **menu bar** in place of the tray.
+- Birdbrain › Settings… (Cmd+,) and Birdbrain › Quit Birdbrain (Cmd+Q) are in the usual menu. Closing the window
+  only hides it; clicking the Dock icon brings it back.
+- Sign-in uses Google Chrome if you have it (or Microsoft Edge); otherwise Birdbrain downloads a browser of its
+  own for it, once.
+- The Telegram token, if you set one, is kept in your Keychain.
+- **Not on the Mac yet:** the quick write shortcut that works from anywhere (press Space in Birdbrain's window, or
+  choose Quick write from the menu bar icon), and opening a card by clicking its notification. Notifications
+  themselves work; macOS shows them as coming from Script Editor the first time and may ask to allow them.
+
+To check a copy: `/Applications/Birdbrain.app/Contents/MacOS/Birdbrain --selftest result.txt` in Terminal.
 
 ## First run
 
@@ -39,7 +66,8 @@ minutes; meanwhile the list says what it is reading, and your deadlines appear a
 
 ## Where your data stays
 
-- Everything is kept on your computer, in `%APPDATA%\Birdbrain`. There is no Birdbrain server or account, and
+- Everything is kept on your computer, in `%APPDATA%\Birdbrain` (on a Mac, `~/Library/Application
+  Support/Birdbrain`). There is no Birdbrain server or account, and
   nothing is sent to its author.
 - You type your password only into Moodle's and Microsoft's own pages. Birdbrain never sees it. It keeps the
   signed-in session those pages give the browser, as a browser does.
@@ -271,7 +299,11 @@ starts on your PC, and swaps it in. The version you had is kept until the next u
 goes wrong. Birdbrain also looks a few times a day and tells you once when a build is ready. Your list and your
 sign-ins are not touched.
 
-To install a build you downloaded yourself: `Birdbrain.exe --install-update <the zip>`.
+On a Mac the same button replaces `Birdbrain.app` where it is and opens it again. It needs Birdbrain to be in
+Applications (or another folder you can write to), not running from the `.dmg`.
+
+To install a build you downloaded yourself: `Birdbrain.exe --install-update <the zip>` (on a Mac,
+`Birdbrain.app/Contents/MacOS/Birdbrain --install-update <the mac zip>`).
 
 ## What it reads
 
@@ -305,7 +337,7 @@ it off if that link is a timed quiz or exam.
 ## The tray icon
 
 The perched bird, with a red count of what's due today. Left-click opens the window. Right-click for Open, Quick
-write, Scan now, Sign in and Quit; everything else is in the window. Closing the window only hides it; Birdbrain
+write, Scan now, Sign in and Quit (on a Mac, click the bird in the menu bar for the same menu); everything else is in the window. Closing the window only hides it; Birdbrain
 keeps scanning. Quit stops it.
 
 ## If something goes wrong
@@ -319,7 +351,8 @@ keeps scanning. Quit stops it.
   - *The last scan didn't finish.* Birdbrain tries again by itself; if it keeps happening, use Report a problem.
 - **A card is the wrong kind.** Press E on the card and say what it is.
 - **A card shouldn't be there.** Archive it, or add a keyword for the whole kind of thing.
-- **The window won't open.** Start `Birdbrain.exe` again: it brings the running copy's window forward.
+- **The window won't open.** Start `Birdbrain.exe` again (on a Mac, click Birdbrain in the Dock or open it from
+  Applications): it brings the running copy's window forward.
 - Settings › Advanced › Files has **Open log**, which says what each scan did.
 - **Report a problem** (in the menu) makes a small zip to send to whoever is helping you: the end of the log, your
   settings, the version, and your own words if you add any. Names, emails, course titles, addresses and tokens are

@@ -82,7 +82,7 @@ class MacPlaces(unittest.TestCase):
 
     def test_the_app_is_found_from_the_program_inside_it(self):
         program = "/Applications/Birdbrain.app/Contents/MacOS/Birdbrain"
-        self.assertEqual(system_mac.app_root(program), Path("/Applications/Birdbrain.app"))
+        self.assertEqual(system_mac.app_root(program), Path("/Applications/Birdbrain.app").resolve())   # (as this computer writes it)
         self.assertEqual(system_mac.program_in(Path("/Applications/Birdbrain.app")), Path(program))
 
     def test_windows_keeps_its_data_where_it_always_has(self):
@@ -174,7 +174,8 @@ class MacTools(unittest.TestCase):
             system_mac.reveal(Path("/a/b.zip"))
             system_mac.open_file(Path("/a/log.txt"))
         said = [c[0][0] for c in popen.call_args_list]
-        self.assertEqual(said, [["/usr/bin/afplay", "/a/chirp.wav"], ["/usr/bin/open", "-R", "/a/b.zip"], ["/usr/bin/open", "/a/log.txt"]])
+        chirp, zip_, log = (str(Path(p)) for p in ("/a/chirp.wav", "/a/b.zip", "/a/log.txt"))   # (as this computer writes them)
+        self.assertEqual(said, [["/usr/bin/afplay", chirp], ["/usr/bin/open", "-R", zip_], ["/usr/bin/open", log]])
 
 
 class SignInBrowser(unittest.TestCase):

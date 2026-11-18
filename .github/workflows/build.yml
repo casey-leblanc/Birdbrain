@@ -176,8 +176,22 @@ jobs:
             git log --no-merges --format='- %s' -1 > notes.md
           fi
           [ -s notes.md ] || echo "- Rebuilt" > notes.md
+          docs="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/experimental"
+          {
+            echo "An experimental build, for testing. The finished version is still 1.1.2."
+            echo
+            echo "- **Trying it?** Follow [the testers' guide]($docs/TESTING.md): about 25 minutes, on Windows or a Mac."
+            echo "- **What's different from 1.1.2:** [CHANGES.md]($docs/CHANGES.md)."
+            echo "- **Which file:** \`…-windows.zip\` for Windows; \`…-mac-arm64.dmg\` for a Mac with Apple silicon;"
+            echo "  \`…-mac-x64.dmg\` for an Intel Mac. The Mac \`.zip\` files are what the app's own updater downloads."
+            echo "- Not signed yet, so Windows and macOS each ask once before opening it. The guide has the steps."
+            echo
+            echo "### Since the build before"
+            echo
+            cat notes.md
+          } > release-notes.md
           gh release create "$TAG" dist/*.zip selftest-result.txt --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "Birdbrain experimental $VERSION (${GITHUB_SHA::7})" --notes-file notes.md
+            --title "Birdbrain experimental $VERSION (${GITHUB_SHA::7})" --notes-file release-notes.md
 
   mac:
     # GitHub's Macs can build the app, run its self-test, start it and update it. What needs eyes and hands (the
