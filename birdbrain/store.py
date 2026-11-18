@@ -8,7 +8,7 @@ import re
 import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from config import DB_PATH
 
@@ -59,13 +59,16 @@ class Item:
     label: str = ""            # for your own items: "life", "work", ... (the label's id; prefs holds its name and colour)
     timed: bool | None = None  # for your own items: whether the time of day is a real one. None: made before 2.0,
                                # when 11:59 PM stood for "no time" (report.has_time)
+    planned: date | None = None  # "I'll do it then": the day the student dragged it to, earlier than it's due
+    rank: float | None = None    # its place among that day's cards, once the student has put them in order
 
 
 def text_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8", "ignore")).hexdigest()
 
 
-_COLUMNS = "id, source, kind, title, due, course, url, detail, confidence, needs_review, level, done_at, label, timed"
+_COLUMNS = ("id, source, kind, title, due, course, url, detail, confidence, needs_review, level, done_at, label, timed, "
+            "planned, rank")
 LABEL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")   # what a label's id looks like
 
 
@@ -99,6 +102,9 @@ class Store:
                 self._db.execute("ALTER TABLE items ADD COLUMN label TEXT DEFAULT ''")
             if "timed" not in have:   # 2.0: "due at 11:59 PM" and "no time" are told apart for your own items
                 self._db.execute("ALTER TABLE items ADD COLUMN timed INTEGER")
+            if "planned" not in have:   # 2.0: where the student dragged a card (planner.py)
+                self._db.execute("ALTER TABLE items ADD COLUMN planned TEXT")
+                self._db.execute("ALTER TABLE items ADD COLUMN rank REAL")
 
     def _changed(self) -> None:
         self.version += 1
@@ -204,6 +210,64 @@ class Store:
         self._changed()
         return cur.rowcount > 0
 
+    # --- where the student put a card: a planned day, a place in its day's order (planner.py) -----
+    # A scan never touches these (upsert leaves them alone), so they last across scans and restarts.
+    def plan(self, item_id: str, day: date | None) -> None:
+        with self._lock, self._db:
+            self._db.execute("UPDATE items SET planned=? WHERE id=?", (day.isoformat() if day else None, item_id))
+        self._changed()
+
+    def set_ranks(self, ranks: dict[str, float | None]) -> None:
+        with self._lock, self._db:
+            self._db.executemany("UPDATE items SET rank=? WHERE id=?", [(r, i) for i, r in ranks.items()])
+        self._changed()
+
+    def set_due(self, item_id: str, due: datetime) -> None:
+        """Move one of your own items to another day (a scan decides the due date of everything else)."""
+        with self._lock, self._db:
+            self._db.execute("UPDATE items SET due=? WHERE id=? AND source='manual'", (due.isoformat(timespec="minutes"), item_id))
+        self._changed()
+
+    def open_items(self) -> list[Item]:
+        """Everything not ticked off, whenever it is due."""
+        with self._lock:
+            rows = self._db.execute(f"SELECT {_COLUMNS} FROM items WHERE done_at IS NULL AND due IS NOT NULL ORDER BY due").fetchall()
+        return [_item(r) for r in rows]
+
+    def snapshot(self, item_ids: list[str]) -> list[dict]:
+        """Where these cards are now (day, plan, order, ticked, archived), so a move can be undone."""
+        places = self.placements()
+        out = []
+        for i in item_ids:
+            if item := self.get(i):
+                out.append({"id": i, "due": item.due.isoformat(timespec="minutes"), "planned": item.planned.isoformat() if item.planned else None,
+                            "rank": item.rank, "done": item.done_at.isoformat(timespec="seconds") if item.done_at else None,
+                            "place": places.get(i)})
+        return out
+
+    def restore(self, snapshot: list[dict]) -> int:
+        """Put cards back where a snapshot says they were. Returns how many."""
+        done = 0
+        with self._lock, self._db:
+            for s in snapshot[:400]:
+                row = self._db.execute("SELECT source FROM items WHERE id=?", (str(s.get("id")),)).fetchone()
+                if not row:
+                    continue
+                planned = date.fromisoformat(s["planned"]).isoformat() if s.get("planned") else None
+                rank = float(s["rank"]) if s.get("rank") is not None else None
+                stamp = datetime.fromisoformat(s["done"]).isoformat(timespec="seconds") if s.get("done") else None
+                self._db.execute("UPDATE items SET planned=?, rank=?, done_at=? WHERE id=?", (planned, rank, stamp, s["id"]))
+                if row[0] == "manual" and s.get("due"):
+                    self._db.execute("UPDATE items SET due=? WHERE id=?",
+                                     (datetime.fromisoformat(s["due"]).isoformat(timespec="minutes"), s["id"]))
+                if s.get("place") in self.PLACES:
+                    self._db.execute("INSERT OR REPLACE INTO placement VALUES (?,?)", (s["id"], s["place"]))
+                else:
+                    self._db.execute("DELETE FROM placement WHERE id=?", (s["id"],))
+                done += 1
+        self._changed()
+        return done
+
     def clear_label(self, label_id: str) -> list[str]:
         """A label was deleted: the items that had it keep everything else. Returns their ids, for Undo."""
         with self._lock, self._db:
@@ -277,4 +341,4 @@ class Store:
 def _item(r) -> Item:
     return Item(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4]) if r[4] else None, r[5], r[6], r[7],
                 r[8], bool(r[9]), r[10] or "", datetime.fromisoformat(r[11]) if r[11] else None, r[12] or "",
-                None if r[13] is None else bool(r[13]))
+                None if r[13] is None else bool(r[13]), date.fromisoformat(r[14]) if r[14] else None, r[15])

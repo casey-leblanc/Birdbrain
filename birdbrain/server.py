@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 
 import custom
 import glass
+import planner
 import prefs
 import quickwrite
 from store import COURSE_CODE, LABEL_ID, WHAT, Item, Store
@@ -147,6 +148,29 @@ class ListServer:
         self.on_change()
         return {"ok": True, "was": was}
 
+    def move(self, body: dict, now: datetime | None = None) -> dict:
+        """A card was dropped somewhere: Completed, Archived, or a day (before another card, or last). A move that
+        can't be made is refused with the reason (planner.py)."""
+        day = None
+        if body.get("day"):
+            try:
+                day = date.fromisoformat(str(body["day"]))
+            except ValueError:
+                raise ValueError("That isn't a day.")
+        before = str(body["before"]) if body.get("before") else None
+        got = planner.move(self.store, str(body.get("id", "")), str(body.get("to", "")), day, before, now)
+        self.on_change()
+        return got
+
+    def move_undo(self, body: dict) -> dict:
+        """Undo a move: every card it touched goes back where the move's snapshot says it was."""
+        snapshot = body.get("undo")
+        if not isinstance(snapshot, list) or not all(isinstance(s, dict) for s in snapshot):
+            raise ValueError("Nothing to undo.")
+        self.store.restore(snapshot)
+        self.on_change()
+        return {"ok": True}
+
     def courses(self) -> list[str]:
         """The student's course codes ("CHEM 1202"), from everything stored, for @class in quick write."""
         with self.store._lock:
@@ -233,7 +257,8 @@ class ListServer:
         srv = self
         routes = {"/api/done": srv.set_done, "/api/items": srv.add_item, "/api/items/update": srv.update_item,
                   "/api/items/delete": srv.delete_item, "/api/items/restore": srv.restore_item,
-                  "/api/place": srv.place, "/api/kind": srv.kind, "/api/quick": srv.quick, "/api/prefs": srv.save_prefs,
+                  "/api/place": srv.place, "/api/kind": srv.kind, "/api/quick": srv.quick,
+                  "/api/move": srv.move, "/api/move-undo": srv.move_undo, "/api/prefs": srv.save_prefs,
                   "/api/scan-mail": srv.scan_mail, "/api/photo-remove": srv.remove_photo}
         routes.update({f"/api/{name}": fn for name, fn in srv.actions.items()})
 

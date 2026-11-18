@@ -153,6 +153,7 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 .btn{min-height:44px;padding:0 18px;font-weight:600}
 .btn.primary{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn.primary:hover{background:#fff;color:#1C2230}
+.grp.empty,ul.day.empty{display:none}
 .in{font-size:.8125rem;color:var(--g-t2)}
 :root{--q-bg:var(--g-sheet);--q-fg:#fff;--q-line:var(--g-edge);--q-muted:var(--g-t2);--q-chip:rgba(255,255,255,.16)}
 .quick{-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}

@@ -23,12 +23,13 @@ import json
 import re
 import zlib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import custom
 import filters
 import glass
 import motion
+import planner
 import prefs as prefs_mod
 import theme
 from config import REPORT_PATH, Settings
@@ -54,6 +55,7 @@ class Group:
     when: str = "time"      # "time" or "date" for the item's time line
     urgent: bool = False
     due: str = ""           # "overdue" / "today" / "tomorrow": lets a look colour the heading
+    day: date | None = None  # the day this group is, if it is one day: a card can be dropped on it
 
 
 @dataclass
@@ -109,18 +111,22 @@ def build(store: Store, settings: Settings, now: datetime | None = None) -> Boar
     items, archived = filters.split([i for i in everything if not i.done_at], settings.hidden_keywords,
                                     pool=everything, placement=store.placements())
 
-    overdue = [i for i in items if i.kind == "assignment" and i.due < now]
-    todays = [i for i in items if day(0) <= i.due < day(1) and not (i.kind == "assignment" and i.due < now)]
-    tomorrow = [i for i in items if day(1) <= i.due < day(2)]
-    week = [Group(f"{day(n):%A}, {day(n):%b} {day(n).day}", [i for i in items if day(n) <= i.due < day(n + 1)])
-            for n in range(2, 7)]
-    later = [i for i in items if i.due >= day(7)]
+    # A card sits under the day it's due, or the day the student planned it for, in the order they gave that day
+    # (planner.py). Homework past its deadline is overdue until it's planned for a day.
+    sits = lambda i: planner.day_of(i, today.date())
+    overdue = [i for i in items if i.kind == "assignment" and i.due < now and not planner.planned_for(i, today.date())]
+    late = {i.id for i in overdue}
+    on = lambda n: planner.ordered([i for i in items if sits(i) == day(n).date() and i.id not in late])
+    todays, tomorrow = on(0), on(1)
+    week = [Group(f"{day(n):%A}, {day(n):%b} {day(n).day}", on(n), day=day(n).date()) for n in range(2, 7)]
+    later = [i for i in items if sits(i) >= day(7).date()]
     upcoming = [i for i in items if i.due >= now]
     codes = {course_code(i) for i in everything}
     return Board(
         columns=[
             Column("Now", [Group("Overdue", overdue, "date", urgent=True, due="overdue"),
-                           Group("Today", todays, due="today"), Group("Tomorrow", tomorrow, due="tomorrow")],
+                           Group("Today", todays, due="today", day=day(0).date()),
+                           Group("Tomorrow", tomorrow, due="tomorrow", day=day(1).date())],
                    "Nothing due right now."),
             Column("This week", week, "Nothing else this week."),
             # One list in date order; exam and quiz chips mark the tests.
@@ -274,7 +280,14 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
             meta += f'<span class="in">in {days} days</span>'
     meta += _code(code, courses) if not (i.label and code == "Personal") else ""   # a label says more than "Personal"
     meta += _label(i.label, labels)
-    meta += f'<time class="w{" late" if urgent else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">{e(_when(i, now, when))}</time>'
+    plan = None if (reason or done) else planner.planned_for(i, now.date())
+    if plan:   # sitting under the day it's planned for: say when it's really due
+        far = abs((i.due.date() - now.date()).days) >= 7
+        real = (f"{i.due:%b} {i.due.day}" if far else f"{i.due:%a}") + (f" {_time(i.due)}" if has_time(i) else "")
+        meta += (f'<time class="w plan{" late" if i.due < now else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">'
+                 f'{"was due" if i.due < now else "due"} {e(real)}</time>')
+    else:
+        meta += f'<time class="w{" late" if urgent else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">{e(_when(i, now, when))}</time>'
     if i.needs_review and not (reason or done):
         meta += '<span class="unsure" title="This date was read from text; double-check it">date unsure</span>'
     if not (reason or done):   # any item can be put out of the way; it waits in Archived
@@ -311,6 +324,8 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
     fields = f' data-manual="{e(_manual_fields(i))}"' if i.source == "manual" else f' data-details="{e(_scraped_fields(i))}"'
     if not (reason or done) and (due := urgency(i, now)):
         fields += f' data-due="{due}"'
+    if not (reason or done):   # what dragging needs to know: is it yours, and when is it really due
+        fields += f' data-deadline="{i.due.date().isoformat()}"' + (' data-own="1"' if i.source == "manual" else "")
     return (f'<li class="{classes}" data-id="{e(i.id)}"{fields}><label class="tickwrap">'
             f'<input class="tick" type="checkbox"{checked} title="{"Untick" if done else "Tick off"} (X)" aria-keyshortcuts="X" '
             f'aria-label="{"Not done" if done else "Done"}: {e(title)}"'
@@ -362,17 +377,20 @@ def _column(c: Column, now: datetime, courses: dict, b: Board | None = None, set
     slug = re.sub(r"\W+", "-", c.title.lower())
     body = ""
     for g in c.groups:
-        if g.items:
+        if g.items or g.day:   # a day with nothing in it is still somewhere a card can be dropped: there, but out of sight
             rows = "".join(_row(i, g.when, now, courses, kinds=c.kinds, urgent=g.urgent, labels=labels) for i in g.items)
             due = f' data-due="{g.due}"' if g.due else ""
-            label = f'<h3 class="grp{" urgent" if g.urgent else ""}"{due}>{e(g.label)}</h3>' if g.label else ""
-            body += f"{label}<ul>{rows}</ul>"
+            day = f' data-day="{g.day.isoformat()}"' if g.day else ""
+            bare = "" if g.items else " empty"
+            label = f'<h3 class="grp{" urgent" if g.urgent else ""}{bare}"{due}{day}>{e(g.label)}</h3>' if g.label else ""
+            body += f'{label}<ul class="day{bare}"{day}>{rows}</ul>'
     if c.title == "Now" and b is not None and settings is not None:
         if not c.count:
-            body = _all_clear(b, settings, now) if scanned else _first_scan()
+            body = (_all_clear(b, settings, now) if scanned else _first_scan()) + body
         elif not (c.groups[0].items or c.groups[1].items):
             body = _day_clear(b, now) + body
-    body = body or f'<p class="empty">{e(c.empty if scanned else "Waiting for the first scan.")}</p>'
+    elif not c.count:
+        body = f'<p class="empty">{e(c.empty if scanned else "Waiting for the first scan.")}</p>' + body
     noun = "item" if c.count == 1 else "items"
     return (f'<section class="band" aria-labelledby="h-{slug}"><h2 id="h-{slug}">{e(c.title)}'
             f'<span class="n">{c.count}<span class="sr"> {noun}</span></span></h2>{body}</section>')
@@ -1111,6 +1129,7 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
 .btn.primary:hover{background:color-mix(in srgb,var(--struct) 86%,var(--text))}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.danger{color:var(--accent);border-color:var(--accent)}
+.grp.empty,ul.day.empty{display:none}
 .in{font-size:.8125rem;color:var(--muted)}
 :root{--q-bg:var(--col);--q-fg:var(--text);--q-line:var(--line);--q-muted:var(--muted);--q-chip:var(--hover)}
 .banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 16px;margin-bottom:20px;
