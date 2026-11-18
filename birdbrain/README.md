@@ -101,7 +101,8 @@ In the top corner of the list:
   also says what it is reading; it turns red, with
   the reason beside it, when something needs you. Point at it to see when the last scan finished. Click it to
   scan now.
-- **The menu** (⋯, or press M): Quick write, Add item, Settings, Scan now, Check for updates, Quit.
+- **The menu** (⋯, or press M): Quick write, Search and commands, Add item, Settings, Scan now, Check for
+  updates, Quit.
 
 If a site needs signing in to again, a card at the top of the list says so, with a **Sign in** button.
 
@@ -135,6 +136,16 @@ with, and your own. A label is a tag on the card, with a small square of its col
   label takes it off its cards and leaves everything else about them; Undo is offered right there. If a colour
   would blend into the page in some look, Settings says which.
 
+### Search and commands
+
+Press **Ctrl+K** or **/** for one line that does two things:
+
+- **Finds cards.** Type a word, `#label` or `@class` and the list narrows as you type. **Enter** keeps it narrowed;
+  **Esc** shows everything again.
+- **Runs things.** Type `scan`, `settings`, `new label`, `night`, `day`, `focus`, `keys`, `completed`… and the
+  commands that answer are listed under the line. The arrow keys choose one and **Enter** runs it. A command is
+  chosen for you when what you typed starts its name ("sc" is Scan now).
+
 **From anywhere on your PC:** press **Ctrl+Alt+Space**, even with Birdbrain's window closed. A small quick write
 line opens on top of whatever you're doing; type, press Enter, and it's gone again. You can change the shortcut or
 turn it off in Settings › Keys. If another program already uses it, Settings says so and offers others.
@@ -159,6 +170,7 @@ turn it off in Settings › Keys. If another program already uses it, Settings s
 | D | Send it to Completed |
 | M | Pick the item up: arrows move it, Enter drops it, Esc puts it back |
 | Ctrl+Z | Undo the last change |
+| Ctrl+K or / | Search, or run a command |
 | # or @ | Show only one label or class |
 | ? | Show every key on one screen |
 | Esc | Close a window |

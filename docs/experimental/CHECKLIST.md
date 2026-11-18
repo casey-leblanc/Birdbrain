@@ -158,7 +158,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 1. Settings in plain order: Sign-ins, Look, Notifications, Keys, Labels, Updates, About; then Advanced, closed
 - [x] 2. Notifications on the PC, on with no setup: one short line; morning, evening, and before a test
 - [x] 3. Telegram under Advanced, off by default, no AI: one-time code, Done buttons, texting adds an item
-- [ ] 4. Search and commands: Ctrl+K or `/`
+- [x] 4. Search and commands: Ctrl+K or `/`
 - [ ] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
 - [ ] 6. Repeating personal items from quick write
 - [ ] 7. Each day says its load; a heavy day ahead is called out once
@@ -201,3 +201,11 @@ One test for everything here: does it help a student see what to do and start on
   while a code is waiting, so the page moves to "linked" by itself.
 - A real bot has not been tried here (no Telegram account, and Telegram is out of reach from the build): the
   stand-in in `tests/test_phone.py` plays Telegram. NEEDS-HUMAN 8 has the steps.
+- Search and commands is the same line that `#` and `@` already opened, grown: Ctrl+K or `/` open it empty. It
+  filters the list as you type, as before, and lists the commands that answer under it (`commands.py`).
+- A command is chosen automatically only when the typed text starts its name or one of its other words and is at
+  least two letters, so searching for a word that happens to sit inside a command's name still just filters.
+- Commands so far: scan, quick write, add, settings, new label, night, day, Glass, Focus, show everything,
+  Completed, Archived, notifications, sign in, keys, updates, Telegram, quit. Later items add their own.
+- A key pressed in the instant after a window closes (Esc then `/`) was being swallowed by the box that had just
+  closed; shortcuts now ignore a focused box inside a closed window.

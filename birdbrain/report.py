@@ -25,6 +25,7 @@ import zlib
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
+import commands
 import custom
 import dragdrop
 import feel
@@ -412,7 +413,7 @@ def status_state(status: str, scanning: bool = False) -> str:
     return "idle" if QUIET.fullmatch(status.strip()) else "note"
 
 
-MENU = (("quick", "Quick write", "Space"), ("add", "Add item", "N"), ("settings", "Settings", "S"), ("scan", "Scan now", "R"),
+MENU = (("quick", "Quick write", "Space"), ("find", "Search and commands", "Ctrl+K"), ("add", "Add item", "N"), ("settings", "Settings", "S"), ("scan", "Scan now", "R"),
         ("update", "Check for updates", ""), ("quit", "Quit Birdbrain", ""))
 
 
@@ -663,7 +664,7 @@ SETTINGS_TABS = (("signins", "Sign-ins"), ("look", "Look"), ("notifications", "N
 # whenever no window is open and you aren't typing; the second while an item has focus.
 KEYS = (("Anywhere", ((("Space",),), "Quick write: add something"), ((("M",),), "Open the menu"), ((("S",),), "Open Settings"),
          ((("R",),), "Scan now"), ((("N",),), "Add an item with the full form"), ((("J",),), "Go to the first item"),
-         ((("#",), ("@",)), "Show only one label or class"), ((("?",),), "Show these keys"), ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
+         ((("Ctrl", "K"), ("/",)), "Search, or run a command"), ((("#",), ("@",)), "Show only one label or class"), ((("?",),), "Show these keys"), ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
         ("In quick write", ((("Enter",),), "Save"), ((("Ctrl", "Enter"),), "Save and add another"),
          ((("Backspace",),), "Right after a word it read: keep that word as plain text")),
         ("On an item", ((("↓",), ("J",)), "Next item"), ((("↑",), ("K",)), "Previous item"),
@@ -926,10 +927,13 @@ def _quick_dialog() -> str:
 
 
 def _filter_dialog() -> str:
-    """Show only one label or class: # or @ opens this line, and the list narrows as you type."""
-    return ('<dialog id="filter" class="quick" aria-label="Show only"><form id="filter-form" novalidate>'
-            '<input id="filter-line" maxlength="60" autocomplete="off" spellcheck="false" placeholder="#label, @class, or a word" '
-            'aria-label="Show only" aria-describedby="filter-hint"><p id="filter-says" class="chips" aria-live="polite"></p>'
+    """Search and commands: Ctrl+K or / opens this line (# or @ start it off for a label or class). The list narrows
+    as you type, and commands that answer to what's typed are listed under it (commands.py)."""
+    return ('<dialog id="filter" class="quick" aria-label="Search and commands"><form id="filter-form" novalidate>'
+            '<input id="filter-line" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Search, #label, @class, or a command" '
+            'role="combobox" aria-expanded="true" aria-controls="cmd-list" aria-autocomplete="list" '
+            'aria-label="Search and commands" aria-describedby="filter-hint"><p id="filter-says" class="chips" aria-live="polite"></p>'
+            '<ul id="cmd-list" class="cmds" role="listbox" aria-label="Commands"></ul>'
             '<p id="filter-hint" class="quick-hint"><kbd>Enter</kbd> keep it<span> · </span><kbd>Esc</kbd> show everything'
             '</p></form></dialog>')
 
@@ -964,7 +968,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
     photo = (lambda n: f"/bg/{n}.jpg?token={token}") if token else glass.file_url
     page_data = json.dumps({"prefs": prefs, "themes": list(prefs_mod.GLASS_THEMES if glass_layout else prefs_mod.FOCUS_THEMES),
                             "modes": list(theme.MODES), "grounds": _grounds(prefs),
-                            "keywords": keyword_counts(b, settings.hidden_keywords), "wing": WING,
+                            "keywords": keyword_counts(b, settings.hidden_keywords), "wing": WING, "commands": commands.data(),
                             "label_notes": prefs_mod.label_notes(prefs), "motion_hints": motion.LEVEL_HINTS})
     page_data = page_data.replace("</", "<\\/")   # can't close the <script> early
     return "".join([
@@ -974,7 +978,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{motion.HEAD_JS}{head_js}</script>",
         f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
-        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}{feel.CSS}</style>",
+        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}{feel.CSS}{commands.CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
@@ -1506,7 +1510,7 @@ TOOLS_CSS = """
 .menu button:hover,.menu button:focus-visible{background:var(--menu-hover);outline:none}
 .menu kbd{font:inherit;font-size:.8125rem;opacity:.7}
 #add-form.locked :disabled{opacity:.72;cursor:default}
-#keys{width:min(780px,calc(100vw - 32px))}#keys .keys-all{columns:2 260px;column-gap:40px}#keys .keys-all dl{break-inside:avoid;margin-bottom:16px}#keys .keys-all h4{break-after:avoid}#keys .keys-all h4.col{break-before:column}
+#keys{width:min(780px,calc(100vw - 32px))}#keys .keys{gap:6px}#keys .keys-all dl{margin-bottom:10px}#keys .keys-all{columns:2 260px;column-gap:40px}#keys .keys-all dl{break-inside:avoid;margin-bottom:16px}#keys .keys-all h4{break-after:avoid}#keys .keys-all h4.col{break-before:column}
 /* quick write: one line in the middle of the window, and chips for what was understood */
 .quick{width:min(640px,calc(100vw - 32px));margin:20vh auto auto;padding:0;border:1px solid var(--q-line);border-radius:14px;
  background:var(--q-bg);color:var(--q-fg);box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:visible}
@@ -2093,7 +2097,7 @@ function closeMenu(focus){var m=menuParts();if(!m.box||m.box.hidden)return;m.box
   m.btn.setAttribute('aria-expanded','false');if(focus)m.btn.focus();}
 function openMenu(){var m=menuParts();if(!m.box)return;m.box.hidden=false;m.btn.setAttribute('aria-expanded','true');
   m.box.querySelector('[role=menuitem]').focus();}
-var MENU_DO={quick:function(){openQuick();},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
+var MENU_DO={quick:function(){openQuick();},find:function(){openFilter('');},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
   update:function(){openSettings('updates','updates-sec');document.getElementById('update-check').click();},
   quit:function(){quitNow();}};
 on('click','#open-menu',function(){var m=menuParts();if(m.box.hidden)openMenu();else closeMenu(true);});
@@ -2148,7 +2152,7 @@ function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   .catch(function(){pollT=setTimeout(watchStatus,20000);});}
 /* Single-key shortcuts (N, S, R, ?): only while no window is open and you aren't typing, and never with Ctrl or Alt */
 var SHORTCUTS={n:function(){if(LIVE)openItemForm(null,null);},s:function(){openSettings();},
-  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},'#':function(){openFilter('#');},'@':function(){openFilter('@');},j:function(){focusRow(listRows()[0]);},'?':function(){openKeys();}};
+  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},'/':function(){openFilter('');},'#':function(){openFilter('#');},'@':function(){openFilter('@');},j:function(){focusRow(listRows()[0]);},'?':function(){openKeys();}};
 /* On an item: ↓/J and ↑/K to the next and previous item (through the columns, then any open bin), ←/→ to the first item
    of the column beside, O (or Enter on its tick box) opens it, A archives it or shows it again, E edits one you added. */
 function listRows(){return [].slice.call(wrap.querySelectorAll('.row[data-id]')).filter(function(r){return r.offsetParent!==null;});}
@@ -2171,8 +2175,8 @@ wrap.addEventListener('keydown',function(ev){
   ev.preventDefault();if(go)focusRow(go);});
 document.addEventListener('keydown',function(ev){
   if(ev.ctrlKey||ev.metaKey||ev.altKey||ev.defaultPrevented||ev.repeat||document.querySelector('dialog[open]:not(.closing)'))return;   /* a sheet on its way out doesn't swallow keys */
-  var a=document.activeElement||{};
-  if(a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable||(a.tagName==='INPUT'&&!/^(checkbox|radio|button|submit)$/.test(a.type)))return;
+  var a=document.activeElement||{},gone=a.closest&&a.closest('dialog:not([open])');   /* a box in a window that has just closed isn't being typed in */
+  if(!gone&&(a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable||(a.tagName==='INPUT'&&!/^(checkbox|radio|button|submit)$/.test(a.type))))return;
   var f=SHORTCUTS[ev.key.length===1?ev.key.toLowerCase():''];
   if(f){ev.preventDefault();f();}});
 /* A sheet leaves the way it came: a quick fade and drop, the dimmed page brightening with it. */
@@ -2269,11 +2273,12 @@ function readFilter(text){var t=text.trim(),low=t.toLowerCase(),plain=function(s
     return got.length?{what:'class',value:got[0],says:got[0]}:{what:'text',value:low,says:'“'+t+'”'};}
   return {what:'text',value:low,says:'“'+t+'”'};}
 function openFilter(start){if(!LIVE||document.querySelector('dialog[open]'))return;closeMenu(false);fLine.value=start||'';fSays.textContent='';
-  filterDlg.showModal();fLine.focus();fLine.setSelectionRange(fLine.value.length,fLine.value.length);}
+  filterDlg.showModal();fLine.focus();fLine.setSelectionRange(fLine.value.length,fLine.value.length);cmdRead();}
 fLine.addEventListener('input',function(){setFilter(readFilter(fLine.value));fSays.textContent='';
   if(FILTER){var s=document.createElement('span');s.className='chip';s.textContent='Only '+FILTER.says;fSays.appendChild(s);}});
-document.getElementById('filter-form').addEventListener('submit',function(ev){ev.preventDefault();filterDlg.close();});
+document.getElementById('filter-form').addEventListener('submit',function(ev){ev.preventDefault();if(!cmdRun())filterDlg.close();});
 filterDlg.addEventListener('cancel',function(){setFilter(null);});   /* Esc in the line: show everything */
+filterDlg.addEventListener('close',function(){if(document.activeElement===fLine)fLine.blur();});   /* so the next key is a shortcut again at once */
 filterDlg.addEventListener('click',function(ev){if(ev.target===filterDlg)filterDlg.close();});
 document.addEventListener('keydown',function(ev){   /* Esc on the list, with a filter on: show everything */
   if(ev.key==='Escape'&&FILTER&&!document.querySelector('dialog[open]')&&!document.querySelector('#app-menu:not([hidden])')){ev.preventDefault();setFilter(null);}});
@@ -2678,6 +2683,7 @@ settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){
 });
 /*FEEL*/
 /*DRAG*/
+/*COMMANDS*/
 bindBoard();
 
 if(LIVE){
@@ -2706,5 +2712,5 @@ if(LIVE){
 })();"""
 
 # every script gets the same motion helpers (CALM, MS, EASE: motion.py)
-JS = JS.replace("/*FEEL*/", feel.JS).replace("/*DRAG*/", dragdrop.JS)
+JS = JS.replace("/*FEEL*/", feel.JS).replace("/*DRAG*/", dragdrop.JS).replace("/*COMMANDS*/", commands.JS)
 JS, CHROME_JS, SETUP_JS = (script.replace("/*MOTION*/", motion.SCRIPT) for script in (JS, CHROME_JS, SETUP_JS))

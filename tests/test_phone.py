@@ -263,7 +263,7 @@ class Texting(Base):
         import telegram
         for module in (phone, telegram, notices):
             code = inspect.getsource(module).lower()
-            for word in ("anthropic", "openai", "api.typesafe", "brain.chat"):
+            for word in ("api_key", "brain.", "/v1/", "completion", "prompt"):
                 self.assertNotIn(word, code)
 
 

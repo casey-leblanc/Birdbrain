@@ -61,7 +61,7 @@ class NoHeader(unittest.TestCase):
     def test_one_menu_holds_everything_else(self):
         page = board()
         menu = page[page.index('id="app-menu"'):page.index('<main class="bands">')]
-        want = ["Quick write", "Add item", "Settings", "Scan now", "Check for updates", "Quit Birdbrain"]
+        want = ["Quick write", "Search and commands", "Add item", "Settings", "Scan now", "Check for updates", "Quit Birdbrain"]
         self.assertEqual([w for w in want if w in menu], want)
         self.assertEqual(menu.count('role="menuitem"'), len(want))
 
