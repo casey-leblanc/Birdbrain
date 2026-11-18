@@ -5,7 +5,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 
 ## 1. Foundation
 
-- [ ] 1. Branch, this checklist, NEEDS-HUMAN.md, version 2.0.0 in `birdbrain/version.py`
+- [x] 1. Branch, this checklist, NEEDS-HUMAN.md, version 2.0.0 in `birdbrain/version.py`
 - [ ] 2. Offline unit tests in `tests/` for the store, dates, filters and the list page
 - [ ] 3. Build workflow: tests, build, packaged self-test, real start, pre-release `exp-<version>-<sha7>`, `--build-info`
 - [ ] 4. No AI: Jev and TypeSafe removed; plain rules; a lab with "test" in its name is an assignment
