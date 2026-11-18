@@ -161,9 +161,16 @@ def display_title(i: Item) -> str:
 
 
 def has_time(i: Item) -> bool:
-    if "time not stated" in i.detail or i.id.startswith("moodle:page:"):
+    """Whether the item's time of day is a real one, rather than a stand-in for "some time that day". An 11:59 PM
+    deadline on Moodle, Gradescope or Connect is a real time. An email or a line of course-page text only gives a
+    day; your own items use 11:59 PM, and Outlook's all-day entries midnight, to mean no time."""
+    if "time not stated" in i.detail or i.id.startswith("moodle:page:") or i.source == "outlook-mail":
         return False
-    return i.source == "moodle" or (i.due.hour, i.due.minute) not in ((23, 59), (0, 0))
+    if i.source == "manual":
+        return (i.due.hour, i.due.minute) != (23, 59)
+    if i.source == "outlook-calendar":
+        return (i.due.hour, i.due.minute) != (0, 0)
+    return True
 
 
 def _time(d: datetime) -> str:
@@ -213,7 +220,7 @@ def _code(code: str, courses: dict[str, dict]) -> str:
 
 def _due_words(i: Item, now: datetime) -> str:
     """When an item is due, in full, for screen readers: the page shows it as a day heading plus a time."""
-    when = f"{i.due:%A, %B} {i.due.day}" + (f", {_time(i.due)}" if has_time(i) else "")
+    when = f"{i.due:%A, %B} {i.due.day}" + (f", {_time(i.due)}" if has_time(i) else ", no time given")
     if urgency(i, now) == "overdue":
         return f"Overdue, was due {when}"
     if i.due < now:
@@ -380,6 +387,18 @@ def _next(level: str, items: list[Item], settings: Settings, now: datetime, cour
             f'<p class="meta">{_code(course_code(nxt), courses)}<span class="w">{e(when)}</span></p></div>')
 
 
+def _sign_in_card(sites: list | None) -> str:
+    """At the top of the list while a site needs signing in to again: until you do, Birdbrain can't see it."""
+    if not sites:
+        return ""
+    names = " and ".join(sites)
+    one = len(sites) == 1
+    return (f'<div class="banner needs-app" role="alert"><p><b>{e(names)} need{"s" if one else ""} signing in to '
+            f'again.</b> Until you do, Birdbrain can’t see new work there, and what it shows from '
+            f'{"it" if one else "them"} may be out of date.</p>'
+            '<button type="button" class="btn" id="card-sign-in">Sign in</button></div>')
+
+
 def _bin(kind: str, title: str, hint: str, rows: str, count: int, is_open: bool) -> str:
     noun = "item" if count == 1 else "items"
     return (f'<details class="bin {kind}" data-bin="{kind}"{" open" if is_open else ""}><summary>'
@@ -417,9 +436,10 @@ def _scan_bar(progress: dict | None) -> str:
 
 
 def render_board(b: Board, settings: Settings, status: str, now: datetime, version: int = 0,
-                 prefs: dict | None = None, progress: dict | None = None) -> str:
+                 prefs: dict | None = None, progress: dict | None = None, sign_in: list | None = None) -> str:
     """Everything inside the page wrapper; the live page swaps this in after a change. `progress` is the scan running
-    now, if one is: what it's reading and how far it has got, shown in place of the status line."""
+    now, if one is: what it's reading and how far it has got, shown in place of the status line. `sign_in` names
+    the sites that need signing in to again."""
     prefs = prefs or prefs_mod.DEFAULTS
     courses = prefs["courses"]
     warn = not progress and any(w in status.lower() for w in ("needs sign-in", "failed", "couldn't reach"))
@@ -443,7 +463,8 @@ def render_board(b: Board, settings: Settings, status: str, now: datetime, versi
         '<button id="open-settings" class="act" type="button" aria-haspopup="dialog" aria-keyshortcuts="S" '
         'title="Settings (S)">Settings</button></nav>',
         '</header>',
-        '<section class="next" aria-label="Next exam and quiz">',
+        '<section class="next" aria-label="Before your list">',
+        _sign_in_card(sign_in),
         _next("exam", b.exams, settings, now, courses, scanned), _next("quiz", b.quizzes, settings, now, courses, scanned),
         "</section>",
         '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned) for c in b.columns), "</main>",
@@ -750,7 +771,8 @@ def _grounds(p: dict) -> dict:
 
 
 def render(b: Board, settings: Settings, status: str, now: datetime, token: str = "", version: int = 0,
-           prefs: dict | None = None, app_window: bool = False, progress: dict | None = None) -> str:
+           prefs: dict | None = None, app_window: bool = False, progress: dict | None = None,
+           sign_in: list | None = None) -> str:
     prefs = prefs or prefs_mod.DEFAULTS
     mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
     # "Match system" is resolved in the browser before the first paint.
@@ -777,7 +799,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f"{TITLEBAR_CSS}{SCROLL_CSS}{MOTION_CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
-        render_board(b, settings, status, now, version, prefs, progress),
+        render_board(b, settings, status, now, version, prefs, progress, sign_in),
         f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs)}{_item_dialog(b, now)}{_kind_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
@@ -939,6 +961,9 @@ h1{grid-area:title;font-size:1rem;font-weight:700;letter-spacing:.02em;color:var
 .btn.danger{color:var(--accent);border-color:var(--accent)}
 .kind-name{font-weight:700;margin:0 0 12px}
 .kind-choices .btn[aria-pressed=true]{background:var(--struct);border-color:var(--struct);color:var(--col)}
+.banner{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 16px;margin-bottom:20px;
+ border:1px solid var(--accent);border-radius:8px;background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.banner p{margin:0;flex:1 1 20rem}
 
 /* next exam and next quiz: one line under the day, each led by the chip its rows wear */
 .next{display:flex;flex-wrap:wrap;gap:8px 48px;margin-bottom:40px}
@@ -1696,6 +1721,9 @@ function bindBoard(){
   if(add)add.addEventListener('click',function(){openItemForm(null,null);});
   var scanTop=document.getElementById('scan-top');
   if(scanTop)scanTop.addEventListener('click',scanNow);   /* while a scan runs it just says so */
+  var signCard=document.getElementById('card-sign-in');
+  if(signCard)signCard.addEventListener('click',function(){api('/api/sign-in').then(function(){
+    toast("The sign-in window is opening. It closes by itself once you're signed in.");}).catch(function(e){toast(e.message);});});
 }
 
 /* --- dialogs ------------------------------------------------------------ */

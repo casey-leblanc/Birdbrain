@@ -10,7 +10,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 3. Build workflow: tests, build, packaged self-test, real start, pre-release `exp-<version>-<sha7>`, `--build-info`
 - [x] 4. No AI: Jev and TypeSafe removed; plain rules; a lab with "test" in its name is an assignment
 - [x] 5. "What is this?": correct a card's kind once, sticks for the series
-- [ ] 6. Fixes: one running copy, scan after sleep and stay awake, 11:59 PM and no-time dates, sign-in card
+- [x] 6. Fixes: one running copy, scan after sleep and stay awake, 11:59 PM and no-time dates, sign-in card
 - [ ] 7. Self-update from `exp-` pre-releases, no token, SHA-256 checked
 - [ ] 8. Header removed: list fills the window, one status dot, one menu
 - [ ] 9. README for students, with the LSU sentence (also on the welcome page and in About)
@@ -29,3 +29,6 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   ("Reminder: …") is not a series.
 - Browser tests live in `tests/ui` (their own job on GitHub, on Linux, before the Windows build). Locally:
   `BIRDBRAIN_TEST_CHROME=/opt/pw-browsers/chromium python3 -m unittest discover tests/ui`.
+- An item with no real time shows no time on its card (never a stand-in "11:59 PM"); a screen reader hears "no time
+  given". 11:59 PM on Moodle, Gradescope and Connect is a real deadline and is shown.
+- The morning wake task from the private fork was not ported: nothing here needs the PC woken yet.

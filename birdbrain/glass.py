@@ -175,6 +175,9 @@ h1{grid-column:2;grid-row:1;justify-self:center;align-self:center;font-size:1.75
 .btn.primary{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn.primary:hover{background:#fff;color:#1C2230}
 .kind-name{font-weight:700;margin:0 0 12px}
+.banner{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 24px;
+ border:1px solid var(--g-red);border-radius:8px;background:rgba(255,133,119,.16)}
+.banner p{margin:0;flex:1 1 20rem}
 .kind-choices .btn[aria-pressed=true]{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn:disabled{opacity:.55;cursor:default}
 

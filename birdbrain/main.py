@@ -32,6 +32,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 import appwindow
 import filters
+import instance
+import power
 import prefs
 import report
 import theme
@@ -253,8 +255,17 @@ class App:
             return report.render_setup(token, saved, app_window, self.settings.outlook_url)
         p = self.progress.view() if self.progress else None
         if board:
-            return report.render_board(b, self.settings, self.status, now, self.store.version, saved, progress=p)
-        return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window, progress=p)
+            return report.render_board(b, self.settings, self.status, now, self.store.version, saved, progress=p,
+                                       sign_in=self._needs_sign_in())
+        return report.render(b, self.settings, self.status, now, token, self.store.version, saved, app_window, progress=p,
+                             sign_in=self._needs_sign_in())
+
+    def _needs_sign_in(self) -> list[str]:
+        """The sites the last scan couldn't read because they want signing in to again (none while the sign-in
+        window is already open)."""
+        if self.signing_in.is_set():
+            return []
+        return [p.replace(" needs sign-in", "") for p in self.problems if "sign-in" in p]
 
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
@@ -683,15 +694,21 @@ class App:
             self.inbox_scanning = since is not None   # before the queue empties, so the page never sees a gap
             self.mail_since = None
             try:
-                self.scan_inbox(since) if since else self.scan()
+                with power.awake():   # the PC doesn't go to sleep partway through
+                    self.scan_inbox(since) if since else self.scan()
             except Exception:
                 log.exception("Scan crashed")
                 self._set_status("Last scan failed (see log)")
             finally:
                 self.scanning = False
             if self.mail_since is None:   # nothing queued while we were busy
-                self.wake.wait(self.settings.interval_minutes * 60)
+                # by the clock on the wall: a PC that slept through its scan time scans as soon as it's back
+                why = power.wait(self.wake, self.settings.interval_minutes * 60, self.stop)
                 self.wake.clear()
+                if why == "woke":
+                    log.info("Back from sleep: scanning once the network is up")
+                    self._set_status("Back from sleep. Scanning as soon as the network is up…")
+                    power.online(self.settings.moodle_url)
 
     def run(self, show: bool = True) -> None:
         """The app window owns the main thread; the tray icon, scans and the list server run beside it."""
@@ -803,14 +820,6 @@ def first_run_setup() -> None:
     s.save()
 
 
-def already_running() -> bool:
-    """True if another copy of Birdbrain is open (two would fight over the browser profile)."""
-    import ctypes
-    global _instance_lock
-    _instance_lock = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\BirdbrainTrayApp")
-    return ctypes.windll.kernel32.GetLastError() == 183   # ERROR_ALREADY_EXISTS
-
-
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         import selftest
@@ -822,8 +831,9 @@ if __name__ == "__main__":
         import buildinfo
         Path(sys.argv[sys.argv.index("--build-info") + 1]).write_text(json.dumps(buildinfo.current()), encoding="utf-8")
         sys.exit(0)
-    if already_running():
-        if not show_running_copy():   # an older copy without the signal
+    todo = instance.start_or_hand_over(sys.argv, show=show_running_copy)
+    if todo != "start":
+        if todo == "tell":   # another copy is running but couldn't be asked to show its window
             import tkinter as tk
             from tkinter import messagebox
             root = tk.Tk(); root.withdraw()

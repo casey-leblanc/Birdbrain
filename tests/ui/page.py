@@ -44,6 +44,7 @@ def invented(now: datetime) -> list[Item]:
 class PageTest(unittest.TestCase):
     """Each test gets a fresh store with the invented items, a running server and an open page."""
     layout = "glass"
+    needs_sign_in: list[str] = []   # sites the page should say need signing in to again
 
     @classmethod
     def setUpClass(cls):
@@ -68,8 +69,10 @@ class PageTest(unittest.TestCase):
         s = self.store
         board = lambda: report.build(s, self.settings)
         self.server = ListServer(
-            s, render_page=lambda t: report.render(board(), self.settings, "Updated.", datetime.now(), t, s.version, prefs.load(s)),
-            render_board=lambda t: report.render_board(board(), self.settings, "Updated.", datetime.now(), s.version, prefs.load(s)),
+            s, render_page=lambda t: report.render(board(), self.settings, "Updated.", datetime.now(), t, s.version,
+                                                   prefs.load(s), sign_in=self.needs_sign_in),
+            render_board=lambda t: report.render_board(board(), self.settings, "Updated.", datetime.now(), s.version,
+                                                       prefs.load(s), sign_in=self.needs_sign_in),
             status=lambda: {"version": s.version, "status": "Updated.", "scanning": False, "progress": None},
             request_mail_scan=lambda d: None, on_change=lambda: None, actions=self.actions())
         self.server.start()
@@ -77,6 +80,9 @@ class PageTest(unittest.TestCase):
         self.page = self.context.new_page()
         self.errors: list[str] = []
         self.page.on("pageerror", lambda e: self.errors.append(str(e)))
+        self.open()
+
+    def open(self):
         self.page.goto(self.server.url)
         self.page.wait_for_selector(".row")
 
