@@ -247,6 +247,8 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
     meta = ""
     if level and kinds:
         meta += f'<span class="kind">{level}</span>'
+        if (days := (i.due.date() - now.date()).days) >= 2 and i.due >= now:
+            meta += f'<span class="in">in {days} days</span>'
     meta += _code(code, courses)
     meta += f'<time class="w{" late" if urgent else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">{e(_when(i, now, when))}</time>'
     if i.needs_review and not (reason or done):
@@ -305,14 +307,11 @@ WING = ('<svg class="wingmark" viewBox="0 0 24 12" aria-hidden="true" focusable=
 
 
 def _all_clear(b: Board, settings: Settings, now: datetime) -> str:
-    """Now has nothing in it: the bird can rest. Says what comes next, so the calm is also useful, unless the
-    next exam or quiz line above already names it."""
+    """Now has nothing in it: the bird can rest. Says what comes next, so the calm is also useful."""
     ahead = sorted((i for c in b.columns[1:] for g in c.groups for i in g.items if i.due >= now), key=lambda i: i.due)
-    shown = {x.id for x in (_next_item("exam", b.exams, now), _next_item("quiz", b.quizzes, now)) if x}
     if ahead:
         nxt = ahead[0]
-        more = ("" if nxt.id in shown else
-                f'Next up: <b>{e(display_title(nxt))}</b> on {nxt.due:%A}, {nxt.due:%b} {nxt.due.day}.')
+        more = f'Next up: <b>{e(display_title(nxt))}</b> on {nxt.due:%A}, {nxt.due:%b} {nxt.due.day}.'
     else:
         more = f"Nothing else in the next {settings.lookahead_days} days, either."
     return (f'<div class="clear">{PERCH}<h3 class="clear-head">all clear</h3>'
@@ -354,37 +353,39 @@ def _column(c: Column, now: datetime, courses: dict, b: Board | None = None, set
             f'<span class="n">{c.count}<span class="sr"> {noun}</span></span></h2>{body}</section>')
 
 
-def _counts(b: Board) -> str:
-    on = lambda n, c: f' class="{c}"' if n else ""
-    return (f'<span{on(b.overdue, "o")} data-due="overdue">{b.overdue} overdue</span>'
-            f'<span{on(b.due_today, "on")} data-due="today">{b.due_today} today</span>'
-            f'<span{on(b.tomorrow, "on")} data-due="tomorrow">{b.tomorrow} tomorrow</span>')
+QUIET = re.compile(r"Updated [^.]*\.")   # a status that only says when the last scan was: nothing to read
 
 
-def _next_item(level: str, items: list[Item], now: datetime) -> Item | None:
-    """The exam or quiz the next-exam line names: an entry whose date came straight from Moodle/Outlook before one
-    read from text. None for a quiz already listed under Now, so it isn't shown twice."""
-    if not items:
-        return None
-    nxt = next((i for i in items if not i.needs_review), items[0])
-    if level == "quiz" and nxt.due < now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=2):
-        return None
-    return nxt
+def status_state(status: str, scanning: bool = False) -> str:
+    """What the status dot shows: "scanning"; "problem" (a site needs signing in to, or a scan failed); "idle" (the
+    last scan went fine, so the words stay out of the way); or "note" (anything else worth reading, such as waiting
+    for the first sign-in)."""
+    if scanning:
+        return "scanning"
+    if any(w in status.lower() for w in ("needs sign-in", "failed", "couldn't reach", "didn't go in", "couldn't be installed")):
+        return "problem"
+    return "idle" if QUIET.fullmatch(status.strip()) else "note"
 
 
-def _next(level: str, items: list[Item], settings: Settings, now: datetime, courses: dict, scanned: bool = True) -> str:
-    one = "exam" if level == "exam" else "quiz"
-    if not items:
-        none = f"None in the next {settings.lookahead_days} days." if scanned else "Waiting for the first scan."
-        return f'<div class="nx {level}"><h2 class="k">Next {one}</h2><p class="none">{none}</p></div>'
-    nxt = _next_item(level, items, now)
-    if nxt is None:
-        return ""
-    when = _when_long(nxt, now) + (", date unsure" if nxt.needs_review else "")
-    due = f' data-due="{u}"' if (u := urgency(nxt, now)) else ""
-    return (f'<div class="nx {level}"{due}><h2 class="k">Next {one}</h2>'
-            f'<p class="t">{e(display_title(nxt))}</p>'
-            f'<p class="meta">{_code(course_code(nxt), courses)}<span class="w">{e(when)}</span></p></div>')
+MENU = (("add", "Add item", "N"), ("settings", "Settings", "S"), ("scan", "Scan now", "R"),
+        ("update", "Check for updates", ""), ("quit", "Quit Birdbrain", ""))
+
+
+def _tools(status: str, progress: dict | None) -> str:
+    """All that sits above the list, in its top corner: one status dot (click it to scan now) and one menu."""
+    text = progress["text"] if progress else status
+    items = "".join(f'<button type="button" role="menuitem" tabindex="-1" data-menu="{k}">{label}'
+                    + (f'<kbd aria-hidden="true">{key}</kbd>' if key else "") + '</button>' for k, label, key in MENU)
+    return (
+        '<h1 class="sr">Birdbrain</h1><div class="tools needs-app">'
+        f'<button id="status-dot" class="status {status_state(status, bool(progress))}" type="button" '
+        f'aria-keyshortcuts="R" title="Scan now (R)"><i class="dot" aria-hidden="true"></i>'
+        f'<span class="st">{e(text)}</span>{_scan_bar(progress)}<span class="sr">. Scan now</span></button>'
+        '<button id="open-menu" class="menu-btn" type="button" aria-haspopup="menu" aria-expanded="false" '
+        'aria-controls="app-menu" aria-keyshortcuts="M" title="Menu (M)"><svg viewBox="0 0 20 20" width="20" height="20" '
+        'aria-hidden="true" focusable="false"><circle cx="4" cy="10" r="1.7"/><circle cx="10" cy="10" r="1.7"/>'
+        '<circle cx="16" cy="10" r="1.7"/></svg><span class="sr">Menu</span></button>'
+        f'<div id="app-menu" class="menu" role="menu" aria-label="Birdbrain" hidden>{items}</div></div>')
 
 
 def _sign_in_card(sites: list | None) -> str:
@@ -437,36 +438,16 @@ def _scan_bar(progress: dict | None) -> str:
 
 def render_board(b: Board, settings: Settings, status: str, now: datetime, version: int = 0,
                  prefs: dict | None = None, progress: dict | None = None, sign_in: list | None = None) -> str:
-    """Everything inside the page wrapper; the live page swaps this in after a change. `progress` is the scan running
-    now, if one is: what it's reading and how far it has got, shown in place of the status line. `sign_in` names
-    the sites that need signing in to again."""
+    """Everything inside the page wrapper; the live page swaps this in after a change: the status dot and the menu
+    in the top corner, then the list. `progress` is the scan running now, if one is: what it's reading and how far
+    it has got. `sign_in` names the sites that need signing in to again."""
     prefs = prefs or prefs_mod.DEFAULTS
     courses = prefs["courses"]
-    warn = not progress and any(w in status.lower() for w in ("needs sign-in", "failed", "couldn't reach"))
-    # Scan now, beside Add item and Settings; while a scan runs it says so (and a click just says it's already scanning)
-    scan_button = ('<button id="scan-top" class="act" type="button" aria-keyshortcuts="R" title="Scan now (R)"'
-                   + (' aria-disabled="true">Scanning…' if progress else '>Scan now') + '</button>')
     # An empty list isn't "all clear" until a scan has looked (the first scan is always a full one).
     scanned = not status.lower().startswith(("not scanned", "full moodle scan"))
     return "".join([
-        '<header class="top">',
-        '<h1>Birdbrain</h1>',
-        f'<p class="status{" problem" if warn else ""}"><span class="st">{e(progress["text"] if progress else status)}</span>'
-        f'{_scan_bar(progress)}</p>',
-        # the counts wait for the first scan: "0 overdue" before anything has been read would be a false all clear
-        f'<div class="today"><h2 class="date">{now:%A, %B} {now.day}</h2>'
-        + (f'<p class="counts">{_counts(b)}</p>' if scanned else "") + '</div>',
-        '<nav class="actions needs-app" aria-label="Actions">',
-        scan_button,
-        '<button id="open-add" class="act strong" type="button" aria-haspopup="dialog" aria-keyshortcuts="N" '
-        'title="Add item (N)">Add item</button>',
-        '<button id="open-settings" class="act" type="button" aria-haspopup="dialog" aria-keyshortcuts="S" '
-        'title="Settings (S)">Settings</button></nav>',
-        '</header>',
-        '<section class="next" aria-label="Before your list">',
+        _tools(status, progress),
         _sign_in_card(sign_in),
-        _next("exam", b.exams, settings, now, courses, scanned), _next("quiz", b.quizzes, settings, now, courses, scanned),
-        "</section>",
         '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned) for c in b.columns), "</main>",
         _bins(b, settings, now, courses, prefs["bins"]),
         # today-left: overdue plus due today, so the page can tell when you've ticked off the last of them
@@ -606,7 +587,7 @@ SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Course
 
 # Keyboard shortcuts. Each entry: the keys (alternatives, each a combination) and what they do. The first group works
 # whenever no window is open and you aren't typing; the second while an item has focus.
-KEYS = (("Anywhere", ((("N",),), "Add an item"), ((("S",),), "Open Settings"), ((("R",),), "Scan now"),
+KEYS = (("Anywhere", ((("N",),), "Add an item"), ((("S",),), "Open Settings"), ((("R",),), "Scan now"), ((("M",),), "Open the menu"),
          ((("J",),), "Go to the first item"), ((("?",),), "Show these shortcuts"),
          ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
         ("On an item", ((("↓",), ("J",)), "Next item"), ((("↑",), ("K",)), "Previous item"),
@@ -817,7 +798,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{head_js}</script>",
         f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
-        f"{TITLEBAR_CSS}{SCROLL_CSS}{MOTION_CSS}</style>",
+        f"{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
@@ -945,23 +926,12 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
 
 /* Focus: one calm page. The list sits in a generous measure with wide margins; structure comes from space and a
    few light headings, never from boxes or rules. Type: 13 / 16 / 20 / 25 / 39px. Spacing: 8px steps, opening wide. */
-.wrap{max-width:1240px;margin:0 auto;padding:clamp(40px,7vh,88px) clamp(24px,6vw,96px) 128px;container-type:inline-size}
-.app-window .wrap{padding-top:clamp(48px,6.5vh,88px)}
+.wrap{position:relative;max-width:1240px;margin:0 auto;padding:60px clamp(24px,6vw,96px) 128px;container-type:inline-size;
+ --tools-top:14px;--tools-right:clamp(16px,calc(6vw - 8px),88px);--tool-fg:var(--muted);--tool-hover:var(--hover);
+ --dot-idle:color-mix(in srgb,var(--struct) 50%,transparent);--dot-busy:var(--struct);--dot-note:var(--struct);--dot-problem:var(--accent);--problem-fg:var(--accent);
+ --menu-bg:var(--col);--menu-line:var(--line);--menu-fg:var(--text);--menu-hover:var(--hover)}
+.app-window .wrap{padding-top:84px;--tools-top:40px}
 
-/* the header: a small wordmark and quiet actions, then the day itself as the headline */
-.top{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title actions" "today today" "status status";align-items:center;row-gap:8px;margin-bottom:20px}
-h1{grid-area:title;font-size:1rem;font-weight:700;letter-spacing:.02em;color:var(--struct);text-transform:lowercase}
-.actions{grid-area:actions;display:flex;gap:4px}
-.today{grid-area:today}
-.today .date{font-size:2.441rem;font-weight:300;line-height:1.15;letter-spacing:-.01em;color:var(--head)}
-/* the counts: a flat heat chip when above zero (Glass's colours, softened into the theme), plain at zero */
-.counts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;color:var(--muted)}
-.counts .o,.counts .on{font-weight:700;padding:0 8px;border-radius:6px}
-.counts [data-due=overdue].o{background:var(--accent);color:var(--accent-ink)}
-.counts [data-due=today].on{background:var(--h-today);color:var(--h-today-ink)}
-.counts [data-due=tomorrow].on{background:var(--h-tomorrow);color:var(--h-tomorrow-ink)}
-.status{grid-area:status;font-size:.8125rem;color:var(--muted)}
-.status.problem{color:var(--accent);font-weight:600}
 
 /* words, not icons */
 .act{position:relative;font:inherit;font-size:.8125rem;font-weight:600;color:var(--muted);background:none;border:0;padding:4px 6px;cursor:pointer;
@@ -969,10 +939,6 @@ h1{grid-area:title;font-size:1rem;font-weight:700;letter-spacing:.02em;color:var
 .act::before{content:"";position:absolute;inset:-12px -4px}   /* a 44px hit area, same look */
 .act:hover{color:var(--text)}
 .act.del{color:var(--accent)}
-.actions .act{font-size:1rem;min-height:44px;padding:8px 14px;color:var(--text);text-decoration:none;border-radius:8px;transition:background-color .15s}
-.actions .act::before{display:none}
-.actions .act:hover{background:var(--hover)}
-.actions .act.strong{color:var(--struct)}
 .btn{font:inherit;font-weight:600;min-height:44px;padding:0 20px;color:var(--struct);background:none;border:1px solid var(--line);border-radius:8px;cursor:pointer;
  transition:border-color .15s,background-color .15s}
 .btn:hover{border-color:var(--struct);background:var(--hover)}
@@ -982,19 +948,12 @@ h1{grid-area:title;font-size:1rem;font-weight:700;letter-spacing:.02em;color:var
 .btn.danger{color:var(--accent);border-color:var(--accent)}
 .kind-name{font-weight:700;margin:0 0 12px}
 .kind-choices .btn[aria-pressed=true]{background:var(--struct);border-color:var(--struct);color:var(--col)}
-.banner{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 16px;margin-bottom:20px;
+.in{font-size:.8125rem;color:var(--muted)}
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 16px;margin-bottom:20px;
  border:1px solid var(--accent);border-radius:8px;background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .banner p{margin:0;flex:1 1 20rem}
 
 /* next exam and next quiz: one line under the day, each led by the chip its rows wear */
-.next{display:flex;flex-wrap:wrap;gap:8px 48px;margin-bottom:40px}
-.nx{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;min-width:0}
-.nx .k{font-size:.8125rem;font-weight:700;line-height:1.5;text-transform:lowercase;padding:0 7px;border:1px solid var(--struct);border-radius:5px;color:var(--struct)}
-.nx.exam .k{background:var(--struct);color:var(--bg)}
-.nx .t{font-weight:600;line-height:1.4}
-.nx.exam .t{font-weight:700}
-.nx .none{color:var(--muted);font-style:italic}
-.nx .meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:.8125rem;color:var(--muted)}
 
 /* the three columns, straight on the page with wide gutters */
 /* a thin rule in the structure colour down the middle of each gutter (across it, where the columns stack), so each
@@ -1221,9 +1180,8 @@ fieldset.field{border:0;padding:0;margin:0 0 16px}
 #toast.has-action.show{pointer-events:auto;display:flex;align-items:center;gap:16px}
 .toast-undo{font:inherit;font-weight:700;color:var(--bg);background:none;border:1px solid var(--bg);border-radius:6px;min-height:32px;padding:0 12px;cursor:pointer}
 @media (max-width:760px){
-.wrap{padding:32px 20px 96px}.app-window .wrap{padding-top:52px}
-.top{margin-bottom:16px}.today .date{font-size:1.953rem}
-.next{margin-bottom:40px;gap:8px 32px}.bins{margin-top:88px}
+.wrap{padding:56px 20px 96px;--tools-right:12px}.app-window .wrap{padding-top:80px}
+.bins{margin-top:88px}
 .sheet{padding:20px}.field-row{grid-template-columns:1fr}
 #settings{height:calc(100vh - 32px)}#settings .sheet-head{padding:20px 20px 8px}.tabs{padding:0 10px;gap:0;justify-content:space-between}.tab{padding:0 5px}.pane{padding:0 20px 24px}
 .courses li{grid-template-columns:32px 1fr auto;grid-template-areas:"color code reset" ". nick nick" ". warn warn";row-gap:6px}}
@@ -1249,6 +1207,35 @@ TITLEBAR_CSS = """
 @media (prefers-reduced-motion:reduce){.titlebar,.win-btn{transition:none}}
 """
 
+TOOLS_CSS = """
+/* the top corner: one status dot (its words show only while scanning or when there's something to read) and a menu */
+.tools{position:absolute;top:var(--tools-top);right:var(--tools-right);z-index:6;display:flex;align-items:center;gap:2px;
+ max-width:calc(100% - 2 * var(--tools-right))}
+.status{display:flex;align-items:center;gap:8px;min-width:36px;min-height:36px;padding:0 13px;font:inherit;font-size:.8125rem;
+ color:var(--tool-fg);background:none;border:0;border-radius:18px;cursor:pointer;overflow:hidden}
+.status .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--dot-idle);transition:background-color .2s}
+.status .st{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status.scanning .st,.status.problem .st,.status.note .st,.status:hover .st,.status:focus-visible .st{display:inline}
+.status.scanning .dot{background:var(--dot-busy);animation:dot-breathe 1.6s ease-in-out infinite}
+.status.note .dot{background:var(--dot-note)}
+.status.problem .dot{background:var(--dot-problem)}
+.status.problem{color:var(--problem-fg);font-weight:600}
+.status .scan-bar{flex:none;width:56px;margin-left:0}
+.status:hover,.menu-btn:hover,.menu-btn[aria-expanded=true]{background:var(--tool-hover)}
+@keyframes dot-breathe{0%,100%{transform:scale(.8);opacity:.6}50%{transform:scale(1.3);opacity:1}}
+@media (prefers-reduced-motion:reduce){.status.scanning .dot{animation:none}}
+.menu-btn{flex:none;display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:50%;background:none;
+ color:var(--tool-fg);cursor:pointer}
+.menu-btn svg{fill:currentColor}
+.menu{position:absolute;top:calc(100% + 6px);right:0;display:grid;min-width:232px;padding:6px;border-radius:12px;
+ background:var(--menu-bg);border:1px solid var(--menu-line);box-shadow:0 12px 32px rgba(0,0,0,.28)}
+.menu[hidden]{display:none}
+.menu button{display:flex;justify-content:space-between;align-items:center;gap:24px;min-height:40px;padding:0 12px;font:inherit;
+ font-size:1rem;text-align:left;color:var(--menu-fg);background:none;border:0;border-radius:8px;cursor:pointer}
+.menu button:hover,.menu button:focus-visible{background:var(--menu-hover);outline:none}
+.menu kbd{font:inherit;font-size:.8125rem;opacity:.7}
+"""
+
 MOTION_CSS = """
 /* the scan's progress, beside the status line: a slim track that fills as the scan goes; one that can't tell how far
    it has got (an inbox scan) sends a short band along it instead. Each layout sets its colours. */
@@ -1258,7 +1245,6 @@ MOTION_CSS = """
  transition:width .6s cubic-bezier(.4,0,.2,1)}
 .scan-bar.busy i{width:35%;animation:scan-busy 1.4s cubic-bezier(.4,0,.2,1) infinite}
 @keyframes scan-busy{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
-.actions .act[aria-disabled=true]{opacity:.62;cursor:default}
 @media (prefers-reduced-motion:reduce){.scan-bar i{transition:none}.scan-bar.busy i{animation:none;width:100%;opacity:.45}}
 /* motion shared by both layouts: sheets closing, and the veil a layout switch crossfades through */
 .sheet-dialog[open]::backdrop{animation:veil-in .2s ease-out}
@@ -1494,13 +1480,13 @@ function restoreFocus(f){if(!f)return;var el=null;
   if(!el&&f.sel)el=wrap.querySelector(f.sel);
   if(el)el.focus();}
 /* The status line is rebuilt too, so a new problem (not just a new "Updated" time) is read out from a region that stays. */
-function problemText(){var p=wrap.querySelector('.status.problem');return p?p.textContent.replace(/^Updated [^.]*\\.\\s*/,''):'';}
+function problemText(){var p=wrap.querySelector('.status.problem .st');return p?p.textContent.replace(/^Updated [^.]*\\.\\s*/,''):'';}
 var said=null;   /* the problem last read out (a scan's progress replaces it on screen for a while) */
 function refreshBoard(focus,opts){var f=focus||focusTarget(),o=opts||{};if(said===null)said=problemText();
   return fetch('/board?token='+encodeURIComponent(TOKEN)).then(function(r){
     if(!r.ok)throw new Error(GONE);return r.text();})
   .then(function(h){wrap.innerHTML=h;bindBoard();if(o.glide)glide(o.glide,o.skip);restoreFocus(f);
-    var p=problemText();if(p&&p!==said)document.getElementById('announce').textContent=wrap.querySelector('.status').textContent;
+    var p=problemText();if(p&&p!==said)document.getElementById('announce').textContent=wrap.querySelector('.status .st').textContent;
     said=p;lastRefresh=Date.now();});
 }
 /* the row after this one in its column or bin (focus moves there when this one leaves); if it was the last there, the
@@ -1736,12 +1722,9 @@ function bindBoard(){
        or saving would bump the version and refresh the page in a loop. */
     d.addEventListener('toggle',function(){if(!!PREFS.bins[d.dataset.bin]===d.open)return;
       PREFS.bins[d.dataset.bin]=d.open;var b={};b[d.dataset.bin]=d.open;savePrefs({bins:b});});});
-  var gear=document.getElementById('open-settings');
-  if(gear)gear.addEventListener('click',function(){openSettings();});
-  var add=document.getElementById('open-add');
-  if(add)add.addEventListener('click',function(){openItemForm(null,null);});
-  var scanTop=document.getElementById('scan-top');
-  if(scanTop)scanTop.addEventListener('click',scanNow);   /* while a scan runs it just says so */
+  var dot=document.getElementById('status-dot');
+  if(dot)dot.addEventListener('click',scanNow);   /* while a scan runs it just says so */
+  wireMenu();
   var signCard=document.getElementById('card-sign-in');
   if(signCard)signCard.addEventListener('click',function(){api('/api/sign-in').then(function(){
     toast("The sign-in window is opening. It closes by itself once you're signed in.");}).catch(function(e){toast(e.message);});});
@@ -1774,19 +1757,44 @@ function scanNow(){api('/api/scan').then(function(r){toast(scanWords(r.state));f
    list is rebuilt when there's something new, as a scan goes and when it ends, but never while you're in the middle
    of something: then as soon as you aren't. */
 var pollT=0,wasBusy=false,stale=false,lastRefresh=0,fastUntil=0;
+/* The menu in the top corner: Add item, Settings, Scan now, Check for updates, Quit. Arrow keys move through it,
+   Esc or a click anywhere else closes it. The list is rebuilt around it, so it's wired again each time. */
+function menuParts(){return {btn:document.getElementById('open-menu'),box:document.getElementById('app-menu')};}
+function closeMenu(focus){var m=menuParts();if(!m.box||m.box.hidden)return;m.box.hidden=true;
+  m.btn.setAttribute('aria-expanded','false');if(focus)m.btn.focus();}
+function openMenu(){var m=menuParts();if(!m.box)return;m.box.hidden=false;m.btn.setAttribute('aria-expanded','true');
+  m.box.querySelector('[role=menuitem]').focus();}
+var MENU_DO={add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
+  update:function(){openSettings('app','updates-sec');document.getElementById('update-check').click();},
+  quit:function(){quitNow();}};
+function wireMenu(){var m=menuParts();if(!m.btn)return;
+  m.btn.addEventListener('click',function(){if(m.box.hidden)openMenu();else closeMenu(true);});
+  m.box.addEventListener('click',function(ev){var b=ev.target.closest('[data-menu]');if(!b)return;
+    if(b.dataset.menu==='quit'&&!b.dataset.armed){b.dataset.armed='1';b.textContent='Click again to quit';   /* quitting can't be undone, so it asks once */
+      setTimeout(function(){if(b.isConnected){delete b.dataset.armed;b.textContent='Quit Birdbrain';}},4000);return;}
+    closeMenu(true);MENU_DO[b.dataset.menu]();});
+  m.box.addEventListener('keydown',function(ev){var its=[].slice.call(m.box.querySelectorAll('[role=menuitem]')),i=its.indexOf(document.activeElement),k=ev.key;
+    if(k==='ArrowDown')its[(i+1)%its.length].focus();else if(k==='ArrowUp')its[(i-1+its.length)%its.length].focus();
+    else if(k==='Home')its[0].focus();else if(k==='End')its[its.length-1].focus();
+    else if(k==='Escape'){closeMenu(true);}else if(k==='Tab'){closeMenu(false);return;}else return;
+    ev.preventDefault();ev.stopPropagation();});}
+document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.tools'))closeMenu(false);});
 function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
-  var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar'),b=document.getElementById('scan-top');
+  var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar');
   if(t&&typeof text==='string'&&t.textContent!==text)t.textContent=text;
-  if(b){b.textContent=p?'Scanning…':'Scan now';if(p)b.setAttribute('aria-disabled','true');else b.removeAttribute('aria-disabled');}
-  if(!p){if(bar)bar.remove();return;}
-  st.classList.remove('problem');   /* the last scan's problem, if any, comes back with the rebuilt list if it's still one */
+  st.classList.toggle('scanning',!!p);
+  if(!p){if(bar)bar.remove();   /* a new status between scans ("Back from sleep…") is worth reading; "Updated 10:32." isn't */
+    if(typeof text==='string'&&!st.classList.contains('problem')){var quiet=/^Updated [^.]*[.]$/.test(text.trim());
+      st.classList.toggle('idle',quiet);st.classList.toggle('note',!quiet);}
+    return;}
+  st.classList.remove('problem','idle','note');   /* the last scan's problem, if any, comes back with the rebuilt list if it's still one */
   if(!bar){bar=document.createElement('span');bar.className='scan-bar';bar.setAttribute('role','progressbar');
     bar.setAttribute('aria-label','Scan progress');bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');
     bar.appendChild(document.createElement('i'));st.appendChild(bar);}
   var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
   if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
   else bar.removeAttribute('aria-valuenow');}
-function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||document.querySelector('.row.leaving'))return false;
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
   var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
 function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
@@ -1798,7 +1806,7 @@ function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   .catch(function(){pollT=setTimeout(watchStatus,20000);});}
 /* Single-key shortcuts (N, S, R, ?): only while no window is open and you aren't typing, and never with Ctrl or Alt */
 var SHORTCUTS={n:function(){if(LIVE)openItemForm(null,null);},s:function(){openSettings();},
-  r:function(){if(LIVE)scanNow();},j:function(){focusRow(listRows()[0]);},'?':function(){openSettings('app','keys-sec');}};
+  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},j:function(){focusRow(listRows()[0]);},'?':function(){openSettings('app','keys-sec');}};
 /* On an item: ↓/J and ↑/K to the next and previous item (through the columns, then any open bin), ←/→ to the first item
    of the column beside, O (or Enter on its tick box) opens it, A archives it or shows it again, E edits one you added. */
 function listRows(){return [].slice.call(wrap.querySelectorAll('.row[data-id]')).filter(function(r){return r.offsetParent!==null;});}
@@ -2043,8 +2051,10 @@ var quit=document.getElementById('quit-app');
 quit.addEventListener('click',function(){
   if(!quit.dataset.armed){quit.dataset.armed='1';quit.textContent='Click again to quit';
     setTimeout(function(){delete quit.dataset.armed;quit.textContent='Quit Birdbrain';},4000);return;}
+  quitNow();});
+function quitNow(){
   api('/api/quit').then(function(){settings.close();wrap.innerHTML='<p class="gone">Birdbrain has quit. To use it again, start Birdbrain.exe.</p>';})
-    .catch(function(e){toast(e.message);});});
+    .catch(function(e){toast(e.message);});}
 var KW=DATA.keywords||[],kwList=document.getElementById('kw-list'),kwForm=document.getElementById('kw-form'),
     kwInput=document.getElementById('kw-input'),kwError=document.getElementById('kw-error'),kwMsg=document.getElementById('kw-msg');
 function renderKw(){kwList.textContent='';

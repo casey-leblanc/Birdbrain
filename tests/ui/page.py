@@ -45,6 +45,7 @@ class PageTest(unittest.TestCase):
     """Each test gets a fresh store with the invented items, a running server and an open page."""
     layout = "glass"
     needs_sign_in: list[str] = []   # sites the page should say need signing in to again
+    status = "Updated 10:32 AM."    # what the app says about its last scan
 
     @classmethod
     def setUpClass(cls):
@@ -69,11 +70,12 @@ class PageTest(unittest.TestCase):
         s = self.store
         board = lambda: report.build(s, self.settings)
         self.server = ListServer(
-            s, render_page=lambda t: report.render(board(), self.settings, "Updated.", datetime.now(), t, s.version,
+            s, render_page=lambda t: report.render(board(), self.settings, self.status, datetime.now(), t, s.version,
                                                    prefs.load(s), sign_in=self.needs_sign_in),
-            render_board=lambda t: report.render_board(board(), self.settings, "Updated.", datetime.now(), s.version,
+            render_board=lambda t: report.render_board(board(), self.settings, self.status, datetime.now(), s.version,
                                                        prefs.load(s), sign_in=self.needs_sign_in),
-            status=lambda: {"version": s.version, "status": "Updated.", "scanning": False, "progress": None},
+            status=lambda: {"version": s.version, "status": self.status, "scanning": False, "progress": None,
+                             "signing_in": False, "inbox": False},
             request_mail_scan=lambda d: None, on_change=lambda: None, actions=self.actions())
         self.server.start()
         self.context = self._browser.new_context(viewport={"width": 1280, "height": 900})

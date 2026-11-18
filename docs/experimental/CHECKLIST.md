@@ -12,7 +12,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 5. "What is this?": correct a card's kind once, sticks for the series
 - [x] 6. Fixes: one running copy, scan after sleep and stay awake, 11:59 PM and no-time dates, sign-in card
 - [ ] 7. Self-update from `exp-` pre-releases, no token, SHA-256 checked
-- [ ] 8. Header removed: list fills the window, one status dot, one menu
+- [x] 8. Header removed: list fills the window, one status dot, one menu
 - [ ] 9. README for students, with the LSU sentence (also on the welcome page and in About)
 
 ### Decisions
@@ -32,3 +32,11 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - An item with no real time shows no time on its card (never a stand-in "11:59 PM"); a screen reader hears "no time
   given". 11:59 PM on Moodle, Gradescope and Connect is a real deadline and is shown.
 - The morning wake task from the private fork was not ported: nothing here needs the PC woken yet.
+- The header's date, counts and "next exam / next quiz" strip are gone, not hidden. The day groups already say
+  what is overdue, today and tomorrow; an exam or quiz two or more days off carries an "in N days" tag instead.
+- The status dot keeps its words hidden when the last scan simply worked ("Updated 10:32 AM."), and shows them
+  while scanning, on a problem, on hover or focus, and for anything else worth reading ("Not scanned yet").
+- The dot and menu sit in the padding at the top corner, so they take no height from the list. Add item is in the
+  menu until quick write replaces it in project 2. M opens the menu. Quit from the menu asks "Click again to quit".
+- A unit test runs the page's scripts through `node --check`: one stray bracket leaves a list that draws but does
+  nothing.

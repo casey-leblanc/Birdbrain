@@ -145,5 +145,24 @@ class Page(unittest.TestCase):
         self.assertIn("setup-form", report.render_setup("tok", prefs.DEFAULTS))
 
 
+class Scripts(unittest.TestCase):
+    """A slip in the page's script leaves a list that draws but does nothing, so the scripts must at least parse."""
+
+    def test_the_pages_scripts_parse(self):
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node isn't installed here")
+        for name in ("JS", "CHROME_JS", "SETUP_JS"):
+            with self.subTest(script=name):
+                path = Path(tempfile.mkdtemp()) / f"{name}.js"
+                path.write_text(getattr(report, name), encoding="utf-8")
+                got = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+                self.assertEqual(got.returncode, 0, got.stderr[-600:])
+
+
 if __name__ == "__main__":
     unittest.main()

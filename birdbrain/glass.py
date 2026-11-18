@@ -117,46 +117,25 @@ body.static .needs-app{display:none!important}
 p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 :focus-visible{outline:2px solid var(--g-focus);outline-offset:3px;border-radius:4px}
 
-/* the frosted frame: one header row (today, title, actions), the status line, the next exam and quiz, three glass
+/* the frosted frame: the status dot and menu in its top corner, then three glass
    columns. Spacing runs on 8px; type on five sizes (13 / 16 / 20 / 28 / 40px). */
-.wrap{width:min(1500px,calc(100% - 2 * max(16px,4vw)));margin:48px auto 64px;padding:32px;
+.wrap{position:relative;width:min(1500px,calc(100% - 2 * max(16px,4vw)));margin:48px auto 64px;padding:40px 32px 32px;
+ --tools-top:2px;--tools-right:22px;--tool-fg:rgba(255,255,255,.92);--tool-hover:rgba(255,255,255,.16);
+ --dot-idle:rgba(255,255,255,.55);--dot-busy:#fff;--dot-note:var(--g-amber);--dot-problem:var(--g-red);--problem-fg:#fff;
+ --menu-bg:var(--g-sheet);--menu-line:var(--g-line);--menu-fg:#fff;--menu-hover:rgba(255,255,255,.16);
+ --bar-track:rgba(255,255,255,.22);--bar-fill:rgba(255,255,255,.92);
  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr);column-gap:24px;row-gap:24px;align-items:start;
  background:var(--g-glass);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);outline:2px solid var(--g-edge);border-radius:10px;
  box-shadow:inset 3px 3px 6px rgba(255,255,255,.4),inset -3px -3px 6px rgba(0,0,0,.4)}
 :root[data-frame=narrow] .wrap{width:min(1240px,calc(100% - 2 * max(24px,10vw)))}   /* more of the photo shows */
-.top{display:contents}
-h1{grid-column:2;grid-row:1;justify-self:center;align-self:center;font-size:1.75rem;font-weight:700;line-height:1.1;letter-spacing:.01em;color:var(--g-title);text-transform:lowercase}
-.status{grid-column:1/-1;grid-row:2;justify-self:center;text-align:center;max-width:60ch;margin-top:-16px;font-size:.8125rem;color:var(--g-t2)}
-.status.problem{background:var(--g-red);color:var(--g-ink);font-weight:700;padding:2px 10px;border-radius:6px}
-.status{--bar-track:rgba(255,255,255,.22);--bar-fill:rgba(255,255,255,.92)}
-.actions{grid-column:3;grid-row:1;justify-self:end;align-self:center;display:flex;gap:8px}
-.today{grid-column:1;grid-row:1;align-self:center;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
-/* next exam and next quiz: side by side, or one line across when alone */
-.next{grid-column:1/-1;grid-row:3;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:24px}
 /* the cadence between the page's parts: the summary strip sits 24px under the header, the list 32px under the
    strip, and the archive bins 48px under the list, so each step away from what's due now is a step further off.
    Columns hug their own items: a busy week doesn't stretch Now and Later into tall, empty panes. */
-.bands{grid-column:1/-1;grid-row:4;display:grid;grid-template-columns:subgrid;row-gap:24px;align-items:start;margin-top:8px}
-.bins{grid-column:1/-1;grid-row:5;margin-top:24px}
+.bands{grid-column:1/-1;display:grid;grid-template-columns:subgrid;row-gap:24px;align-items:start}
+.bins{grid-column:1/-1;margin-top:24px}
 
 /* glass panels (the site's sidebar panels and blog entries): a faint wash and a hairline; only the frame is bevelled */
-.nx,.band,.bin{background:var(--g-pane);border:1px solid var(--g-line);border-radius:8px}
-.nx{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;padding:12px 24px}
-/* both showing: each stacks its label, name, then course and date, on rows the pair shares so they line up */
-.next:has(.nx+.nx) .nx{display:grid;grid-row:span 3;grid-template-rows:subgrid;row-gap:4px;align-items:baseline}
-.today .date{font-size:1rem;font-weight:700;color:var(--g-t1);text-transform:lowercase}
-.nx .k{font-size:1rem;font-weight:700;color:var(--g-t1);text-transform:lowercase}
-.nx .t{font-size:1rem;font-weight:700;line-height:1.35}
-.nx.exam .t{font-size:1.25rem;font-weight:800;line-height:1.25;color:#fff}
-.nx .none{font-style:italic;color:var(--g-t2)}
-.nx .meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:.8125rem;color:var(--g-t2)}
-/* the counts: a heat chip when above zero, plain text at zero (nothing here is a button) */
-.counts{display:flex;flex-wrap:wrap;gap:8px 16px}
-.counts span{font-size:.8125rem;line-height:1.5;color:var(--g-t2);padding:2px 0}
-.counts .o,.counts .on{font-weight:700;color:var(--g-ink);padding:2px 8px;border-radius:6px}
-.counts [data-due=overdue].o{background:var(--g-red)}
-.counts [data-due=today].on{background:var(--g-amber)}
-.counts [data-due=tomorrow].on{background:var(--g-yellow)}
+.band,.bin{background:var(--g-pane);border:1px solid var(--g-line);border-radius:8px}
 
 /* buttons: the site's glass button, and small text actions inside items */
 .act{position:relative;font:inherit;font-size:.8125rem;font-weight:600;color:var(--g-t1);background:none;border:0;padding:2px 4px;cursor:pointer;
@@ -175,6 +154,8 @@ h1{grid-column:2;grid-row:1;justify-self:center;align-self:center;font-size:1.75
 .btn.primary{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn.primary:hover{background:#fff;color:#1C2230}
 .kind-name{font-weight:700;margin:0 0 12px}
+.in{font-size:.8125rem;color:var(--g-t2)}
+.menu{-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}   /* the list behind it stays out of the words */
 .banner{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 24px;
  border:1px solid var(--g-red);border-radius:8px;background:rgba(255,133,119,.16)}
 .banner p{margin:0;flex:1 1 20rem}
@@ -423,16 +404,11 @@ fieldset.field{border:0;padding:0;margin:0 0 1rem}
 /* narrower windows: two columns, then one (the site's own breakpoints) */
 @media (max-width:1150px){
 .wrap,:root[data-frame=narrow] .wrap{grid-template-columns:repeat(2,minmax(0,1fr));width:calc(100% - 2 * max(16px,4vw))}
-h1{grid-column:1/-1}
-.today{grid-column:1;grid-row:3}.actions{grid-column:2;grid-row:3}
-.next{grid-row:4}
-.bands{grid-row:5}.band:nth-child(3){grid-column:1/-1}.bins{grid-row:6}
+.band:nth-child(3){grid-column:1/-1}
 .band:nth-child(3) ul{grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr));column-gap:16px}}   /* later, full width: two lists side by side */
 @media (max-width:768px){
-.wrap,:root[data-frame=narrow] .wrap{grid-template-columns:minmax(0,1fr);margin:24px 8px;width:auto;padding:24px 16px}
-h1{font-size:1.75rem}
-.actions{grid-column:1;grid-row:4;justify-self:start}   /* after today's date and counts, as in the page's order */
-.today,.band:nth-child(3){grid-column:1}.today{grid-row:3}.next{grid-row:5}.bands{grid-row:6}.bins{grid-row:7}
+.wrap,:root[data-frame=narrow] .wrap{grid-template-columns:minmax(0,1fr);margin:24px 8px;width:auto;padding:44px 16px 24px;--tools-right:8px}
+.band:nth-child(3){grid-column:1}
 .sheet{padding:18px}.field-row{grid-template-columns:1fr}
 #settings{height:calc(100vh - 32px)}#settings .sheet-head{padding:18px 18px 8px}.tabs{padding:0 8px;gap:0;justify-content:space-between}.tab{padding:0 5px}.pane{padding:0 18px 22px}
 .courses li{grid-template-columns:32px 1fr auto;grid-template-areas:"color code reset" ". nick nick" ". warn warn";row-gap:6px}}
