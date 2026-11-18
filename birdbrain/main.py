@@ -941,13 +941,14 @@ if __name__ == "__main__":
         out = Path(sys.argv[sys.argv.index("--selftest") + 1]) if len(sys.argv) > sys.argv.index("--selftest") + 1 \
             else Path.cwd() / "birdbrain-selftest.txt"
         sys.exit(selftest.run(out))
+    if "--install-update" in sys.argv:   # install a build from a zip on this PC, then start it with what follows
+        at = sys.argv.index("--install-update")
+        sys.exit(updater.install_from_zip(Path(sys.argv[at + 1]), sys.argv[at + 2:]))
+    # (before --build-info: the arguments after the zip are for the new version, not this one)
     if "--build-info" in sys.argv:   # which build this is, written to the file named after the flag
         import json
         Path(sys.argv[sys.argv.index("--build-info") + 1]).write_text(json.dumps(buildinfo.current()), encoding="utf-8")
         sys.exit(0)
-    if "--install-update" in sys.argv:   # install a build from a zip on this PC, then start it (updater.install_from_zip)
-        at = sys.argv.index("--install-update")
-        sys.exit(updater.install_from_zip(Path(sys.argv[at + 1]), sys.argv[at + 2:]))
     todo = instance.start_or_hand_over(sys.argv, show=show_running_copy)
     if todo != "start":
         if todo == "tell":   # another copy is running but couldn't be asked to show its window

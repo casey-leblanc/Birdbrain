@@ -187,6 +187,27 @@ class Updates(unittest.TestCase):
         self.assertEqual((app / "started.txt").read_text().strip(), "--background")
 
 
+class StartingUp(unittest.TestCase):
+    def test_the_arguments_after_the_zip_belong_to_the_new_version(self):
+        """Birdbrain.exe --install-update <zip> --build-info <file> must install, not answer --build-info itself."""
+        main = (Path(__file__).resolve().parent.parent / "birdbrain" / "main.py").read_text(encoding="utf-8")
+        start = main[main.index('if __name__ == "__main__":'):]
+        self.assertLess(start.index('"--install-update" in sys.argv'), start.index('"--build-info" in sys.argv'))
+
+    def test_a_zip_that_is_not_a_build_is_refused_and_says_why(self):
+        tmp = Path(tempfile.mkdtemp())
+        with mock.patch.object(updater, "UPDATE_DIR", tmp), mock.patch.object(updater, "RESULT", tmp / "result.json"):
+            bad = tmp / "notes.zip"
+            with zipfile.ZipFile(bad, "w") as z:
+                z.writestr("readme.txt", "hello")
+            self.assertEqual(updater.install_from_zip(bad, []), 1)
+            self.assertEqual(updater.last_result()["ok"], False)
+            normal = tmp / "normal.zip"
+            normal.write_bytes(build_zip("v3.0.0"))
+            self.assertEqual(updater.install_from_zip(normal, []), 1)
+            self.assertIn("isn't an experimental", updater.last_result()["why"])
+
+
 class InSettings(unittest.TestCase):
     def page(self, update):
         s = store()
