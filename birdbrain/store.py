@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+import html
+import json
+import re
 import sqlite3
 import threading
 from dataclasses import dataclass
@@ -11,6 +14,32 @@ from config import DB_PATH
 
 KINDS = ("assignment", "test", "event")
 LEVELS = ("", "exam", "quiz")   # "" = decide from the title (report.test_level)
+# What a student can say an item is, and how that is stored (kind, level).
+WHAT = {"assignment": ("assignment", ""), "quiz": ("test", "quiz"), "exam": ("test", "exam"), "event": ("event", "")}
+COURSE_CODE = re.compile(r"\b([A-Z]{2,4})\s?(\d{4})\b")   # "CHEM 1212", "BE 2352"
+
+
+def course_of(item: "Item") -> str:
+    """'CHEM 1212' from the item's course (or, failing that, its title); '' if it names none."""
+    for text in (item.course, item.title):
+        if m := COURSE_CODE.search(html.unescape(text or "")):
+            return f"{m.group(1)} {m.group(2)}"
+    return ""
+
+
+def series_of(title: str) -> str:
+    """What a run of similar items has in common: the lead-in before " - " or ":", without its numbers.
+    "Biochemical Testing - Indole Test" -> "biochemical testing"; "Exp #19 Quiz: Titration" -> "exp # quiz";
+    "Quiz 4" -> "quiz"."""
+    lead = re.split(r"\s[-–—]\s|:\s", html.unescape(title), maxsplit=1)[0]
+    return " ".join(re.sub(r"\d+", "", lead).lower().split())
+
+
+def _series_key(item: "Item") -> str | None:
+    """Where a student's answer for a whole series is kept; None for an item that names no course (an email's
+    lead-in, like "Reminder", is not a series)."""
+    course, series = course_of(item), series_of(item.title)
+    return f"kindrule:{course}|{series}" if course and series else None
 
 
 @dataclass
@@ -89,9 +118,44 @@ class Store:
         with self._lock, self._db:
             self._db.execute("INSERT OR REPLACE INTO judged VALUES (?,?)", (h, item_id))
 
+    # --- "What is this?": the student's own answer beats the rules ------------------
+    def said(self, item: Item) -> tuple[str, str] | None:
+        """(kind, level) if the student has said what this item is, or what its series in that course is."""
+        for key in ("said:" + item.id, _series_key(item)):
+            if key and (raw := self.get_meta(key)):
+                got = json.loads(raw)
+                return got["kind"], got["level"]
+        return None
+
+    def say_kind(self, item: Item, what: str) -> list[Item]:
+        """The student says what this item is ("assignment", "quiz", "exam" or "event"). It holds for the item for
+        good, and for the rest of its series in that course, now and as new ones turn up. Returns the other stored
+        items it changed."""
+        kind, level = WHAT[what]
+        answer = json.dumps({"kind": kind, "level": level, "like": item.title})
+        self.set_meta("said:" + item.id, answer)
+        key, changed = _series_key(item), []
+        if key:
+            self.set_meta(key, answer)
+            with self._lock:
+                rows = self._db.execute(f"SELECT {_COLUMNS} FROM items WHERE source != 'manual'").fetchall()
+            for other in map(_item, rows):
+                if other.id == item.id or _series_key(other) != key or (other.kind, other.level) == (kind, level):
+                    continue
+                if not self.get_meta("said:" + other.id):   # what they said about that one in particular stands
+                    changed.append(other)
+        with self._lock, self._db:
+            for i in [item] + changed:
+                self._db.execute("UPDATE items SET kind=?, level=? WHERE id=?", (kind, level, i.id))
+        self._changed()
+        return changed
+
     # --- items ----------------------------------------------------------------
     def upsert(self, item: Item) -> bool:
-        """Insert or refresh an item (keeping its completed state). Returns True if new."""
+        """Insert or refresh an item (keeping its completed state, and what the student said it is). Returns True
+        if new."""
+        if item.source != "manual" and (said := self.said(item)):
+            item.kind, item.level = said
         now = datetime.now().isoformat(timespec="seconds")
         due = item.due.isoformat(timespec="minutes") if item.due else None
         with self._lock, self._db:

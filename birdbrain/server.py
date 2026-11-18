@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 import custom
 import glass
 import prefs
-from store import Item, Store
+from store import WHAT, Item, Store
 
 log = logging.getLogger(__name__)
 
@@ -141,6 +141,19 @@ class ListServer:
         self.on_change()
         return {"ok": True, "was": was}
 
+    def kind(self, body: dict) -> dict:
+        """The student says what an item is (assignment, quiz, exam or event). It holds for the item and for the
+        rest of its series in that course."""
+        item, what = self.store.get(str(body.get("id", ""))), body.get("what")
+        if not item or what not in WHAT:
+            raise ValueError("Couldn't change that item.")
+        if item.source == "manual":
+            raise ValueError("Edit an item you added to change what it is.")
+        also = self.store.say_kind(item, what)
+        log.info("Said to be %s: %r, and %d more like it", what, item.title, len(also))
+        self.on_change()
+        return {"ok": True, "what": what, "also": len(also)}
+
     def _photo_url(self, name: str) -> str:
         return f"/bg/{name}.jpg?token={self.token}"
 
@@ -174,7 +187,7 @@ class ListServer:
         srv = self
         routes = {"/api/done": srv.set_done, "/api/items": srv.add_item, "/api/items/update": srv.update_item,
                   "/api/items/delete": srv.delete_item, "/api/items/restore": srv.restore_item,
-                  "/api/place": srv.place, "/api/prefs": srv.save_prefs,
+                  "/api/place": srv.place, "/api/kind": srv.kind, "/api/prefs": srv.save_prefs,
                   "/api/scan-mail": srv.scan_mail, "/api/photo-remove": srv.remove_photo}
         routes.update({f"/api/{name}": fn for name, fn in srv.actions.items()})
 

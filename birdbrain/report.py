@@ -246,6 +246,10 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
         meta += '<span class="unsure" title="This date was read from text; double-check it">date unsure</span>'
     if not (reason or done):   # any item can be put out of the way; it waits in Archived
         meta += (f'<button type="button" class="act arch needs-app" aria-label="Archive {e(title)}">Archive</button>')
+        if i.source != "manual":   # say what it is, if the rules have it wrong (your own items have Edit)
+            what = test_level(i) or i.kind
+            meta += (f'<button type="button" class="act whatis needs-app" data-what="{what}" aria-haspopup="dialog" '
+                     f'title="What is this? (now: {what})" aria-label="What is {e(title)}? Now: {what}">?</button>')
 
     did = f"d{zlib.crc32(i.id.encode()):x}"
     acts = (f'<span class="acts needs-app"><button type="button" class="act edit">Edit</button>'
@@ -719,6 +723,19 @@ def _item_dialog(b: Board, now: datetime) -> str:
         '<button type="submit" class="btn primary">Add item</button></div></form></dialog>')
 
 
+def _kind_dialog() -> str:
+    """What is this? The student says what an item is, and it sticks."""
+    choices = "".join(f'<button type="button" class="btn" data-what="{k}">{label}</button>'
+                      for k, label in (("assignment", "Assignment"), ("quiz", "Quiz"), ("exam", "Exam"), ("event", "Event")))
+    return ('<dialog id="kind-dialog" class="sheet-dialog" aria-labelledby="kind-title"><div class="sheet">'
+            '<div class="sheet-head"><h2 id="kind-title">What is this?</h2>'
+            '<button type="button" class="act" data-close>Close</button></div>'
+            '<p class="kind-name"></p>'
+            f'<div class="btn-row kind-choices">{choices}</div>'
+            '<p class="hint">Your answer sticks. It also goes for the others like it in the same course (the same '
+            'lead-in, such as “Biochemical Testing - …”), now and when new ones turn up.</p></div></dialog>')
+
+
 def _grounds(p: dict) -> dict:
     """Each layout's ground colour, day and night, for the chosen themes: the photo's own colour behind Glass, the
     canvas in Focus. A layout switch crossfades through the new layout's ground."""
@@ -761,7 +778,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs)}{_item_dialog(b, now)}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs)}{_item_dialog(b, now)}{_kind_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -920,6 +937,8 @@ h1{grid-area:title;font-size:1rem;font-weight:700;letter-spacing:.02em;color:var
 .btn.primary:hover{background:color-mix(in srgb,var(--struct) 86%,var(--text))}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.danger{color:var(--accent);border-color:var(--accent)}
+.kind-name{font-weight:700;margin:0 0 12px}
+.kind-choices .btn[aria-pressed=true]{background:var(--struct);border-color:var(--struct);color:var(--col)}
 
 /* next exam and next quiz: one line under the day, each led by the chip its rows wear */
 .next{display:flex;flex-wrap:wrap;gap:8px 48px;margin-bottom:40px}
@@ -995,9 +1014,10 @@ a.t:hover{text-decoration-style:solid;text-decoration-color:currentColor}
 .detail{font-size:.8125rem;color:var(--muted);margin-top:6px;max-width:36rem;overflow-wrap:anywhere}
 .acts{display:inline-flex;gap:4px;margin-left:4px}
 /* Archive: on every open item, shown under the pointer or while the row has keyboard focus (always, on touch) */
-.act.arch{margin-left:auto;opacity:0;transition:opacity .15s ease-out}
-.row:hover .act.arch,.row:focus-within .act.arch{opacity:1}
-@media (hover:none){.act.arch{opacity:1}}
+.act.arch{margin-left:auto}
+.act.arch,.act.whatis{opacity:0;transition:opacity .15s ease-out}
+.row:hover .act.arch,.row:focus-within .act.arch,.row:hover .act.whatis,.row:focus-within .act.whatis{opacity:1}
+@media (hover:none){.act.arch,.act.whatis{opacity:1}}
 .kw-msg:empty{display:none}
 .sub-options{margin:4px 0 8px 28px;padding-left:16px;border-left:1px solid var(--line)}
 .sub-options .field{margin-bottom:4px}
@@ -1651,6 +1671,8 @@ function bindBoard(){
         .then(function(){return refreshBoard({id:r.item.id,part:'.tick'});}).then(function(){toast('Put back “'+name+'”');})
         .catch(function(err){toast("Couldn't undo: "+err.message);});});});})
       .catch(function(err){toast(err.message);});});});
+  document.querySelectorAll('.act.whatis').forEach(function(btn){btn.addEventListener('click',function(){
+    var li=btn.closest('.row');askKind(li.dataset.id,li.querySelector('.t').firstChild.textContent,btn.dataset.what);});});
   /* Archive: any item, out of the way until you want it; it waits in Archived */
   document.querySelectorAll('.act.arch').forEach(function(btn){btn.addEventListener('click',function(){
     var li=btn.closest('.row'),id=li.dataset.id;
@@ -1712,7 +1734,7 @@ function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
   var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
   if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
   else bar.removeAttribute('aria-valuenow');}
-function canRefresh(){if(document.hidden||settings.open||itemDlg.open||document.querySelector('.row.leaving'))return false;
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||document.querySelector('.row.leaving'))return false;
   var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
 function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
@@ -1757,7 +1779,19 @@ function closeSheet(d){if(!d.open||d.classList.contains('closing'))return;
   d.classList.add('closing');
   d.addEventListener('animationend',function h(ev){if(ev.target!==d)return;d.removeEventListener('animationend',h);done();});
   setTimeout(done,400);}   /* in case the animation never runs */
-[settings,itemDlg].forEach(function(d){
+/* "What is this?": you say what an item is; it goes for its series in that course too */
+var kindDlg=document.getElementById('kind-dialog'),kindId=null;
+function askKind(id,title,what){kindId=id;kindDlg.querySelector('.kind-name').textContent=title;
+  kindDlg.querySelectorAll('[data-what]').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.what===what?'true':'false');});
+  kindDlg.showModal();}
+kindDlg.querySelectorAll('[data-what]').forEach(function(b){b.addEventListener('click',function(){
+  var id=kindId;
+  api('/api/kind',{id:id,what:b.dataset.what}).then(function(r){closeSheet(kindDlg);
+    var a=/^[aeiou]/.test(r.what)?'an ':'a ';
+    toast('Marked as '+a+r.what+(r.also?', with '+r.also+' more like it in that course.':'.'));
+    return refreshBoard({id:id,part:'.act.whatis'});})
+  .catch(function(e){toast(e.message);});});});
+[settings,itemDlg,kindDlg].forEach(function(d){
   d.addEventListener('click',function(ev){if(ev.target===d)closeSheet(d);});
   d.addEventListener('cancel',function(ev){ev.preventDefault();closeSheet(d);});   /* Esc */
   d.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){closeSheet(d);});});

@@ -174,6 +174,8 @@ h1{grid-column:2;grid-row:1;justify-self:center;align-self:center;font-size:1.75
 .btn{min-height:44px;padding:0 18px;font-weight:600}
 .btn.primary{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn.primary:hover{background:#fff;color:#1C2230}
+.kind-name{font-weight:700;margin:0 0 12px}
+.kind-choices .btn[aria-pressed=true]{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn:disabled{opacity:.55;cursor:default}
 
 /* the three columns */
@@ -231,9 +233,10 @@ a.t:hover{text-decoration-style:solid;text-decoration-color:currentColor}
 .detail{font-size:.8125rem;line-height:1.5;color:var(--g-t2);margin-top:6px;overflow-wrap:anywhere}
 .acts{display:inline-flex;gap:.3rem;margin-left:.2rem}
 /* Archive: on every open item, shown under the pointer or while the tile has keyboard focus (always, on touch) */
-.act.arch{margin-left:auto;opacity:0;transition:opacity .2s ease-out}
-.row:hover .act.arch,.row:focus-within .act.arch{opacity:1}
-@media (hover:none){.act.arch{opacity:1}}
+.act.arch{margin-left:auto}
+.act.arch,.act.whatis{opacity:0;transition:opacity .2s ease-out}
+.row:hover .act.arch,.row:focus-within .act.arch,.row:hover .act.whatis,.row:focus-within .act.whatis{opacity:1}
+@media (hover:none){.act.arch,.act.whatis{opacity:1}}
 .kw-msg:empty{display:none}
 .sub-options{margin:4px 0 8px 28px;padding-left:16px;border-left:1px solid var(--g-line)}
 .sub-options .field{margin-bottom:4px}

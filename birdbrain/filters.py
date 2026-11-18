@@ -18,7 +18,7 @@ import html
 import re
 from dataclasses import dataclass
 
-from store import Item
+from store import COURSE_CODE, Item
 
 # Moodle activities and calendar events with dates straight from Moodle.
 STRUCTURED = ("moodle:cm:", "moodle:idx:", "moodle:cal:")
@@ -31,7 +31,6 @@ january february march april may june july august september october november dec
 jan feb mar apr jun jul aug sep sept oct nov dec
 monday tuesday wednesday thursday friday saturday sunday mon tue tues wed thu thurs fri sat sun
 """.split())
-COURSE_CODE = re.compile(r"\b([A-Z]{2,4})\s?(\d{4})\b")   # "CHEM 1212", "BE 2352"
 SAME_ACTIVITY = 0.6     # share of the Moodle title's words found in the other item
 SAME_DAY_MATCH = 0.3    # lower bar when both fall on the same day
 MAX_DATE_GAP = 21       # days; a course page may state a stale or tentative date
