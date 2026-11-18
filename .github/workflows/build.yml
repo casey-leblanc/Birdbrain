@@ -106,8 +106,9 @@ jobs:
           foreach ($vk in 0x20, 0x12, 0x11) { [Win.Keys]::keybd_event($vk, 0, 2, [UIntPtr]::Zero) }
           $opened = 'Quick write opened by its shortcut'
           for ($i = 0; $i -lt 15 -and -not (Select-String -Path $log -Pattern $opened -Quiet); $i++) { Start-Sleep 1 }
-          if (Select-String -Path $log -Pattern $opened -Quiet) { "PRESSED: Ctrl+Alt+Space reached Birdbrain and opened quick write." }
-          else { "NOT PRESSED: this machine didn't deliver the simulated key press, so only the registration was checked." }
+          if (-not (Select-String -Path $log -Pattern $opened -Quiet)) { Get-Content $log -Tail 20; throw "Ctrl+Alt+Space was pressed but quick write didn't open" }
+          "Ctrl+Alt+Space reached Birdbrain and opened quick write."
+          "PASS  quick write shortcut: registered with Windows, pressed, and the small window opened" | Add-Content selftest-result.txt
           Start-Sleep 5
           if ($first.HasExited) { throw "Birdbrain stopped by itself (exit code $($first.ExitCode))" }
           if (Select-String -Path $log -Pattern 'Traceback|CRITICAL' -Quiet) { throw "Birdbrain logged an error while starting" }
