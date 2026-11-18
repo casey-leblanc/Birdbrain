@@ -1,8 +1,8 @@
 # Birdbrain
 
 A Windows app that keeps a daily list of your assignments, tests and events
-from **Moodle** and **Outlook on the web**, using TypeSafe's **Jev** model to read
-emails and course text. The list opens in Birdbrain's own window, and Birdbrain
+from **Moodle** and **Outlook on the web**. There is no AI in it and no key to set up:
+plain rules read titles, emails and course text. The list opens in Birdbrain's own window, and Birdbrain
 keeps scanning from the system tray while the window is closed.
 
 ## Install (packaged app)
@@ -65,7 +65,6 @@ deadlines appear as it goes.
 ```
 pip install -r requirements.txt
 python -m playwright install chromium-headless-shell
-setx TYPESAFE_API_KEY "your-key"      # from typesafe.ai; open a new terminal afterwards
 pythonw main.py
 ```
 
@@ -81,7 +80,7 @@ sign in when Microsoft wants a password or code again.
 
 ## What it reads
 
-| Source | How | Jev's role |
+| Source | How | What the rules decide |
 |---|---|---|
 | Moodle timeline | Moodle's AJAX API via your session (open work with deadlines; submitted work disappears) | Decides whether an activity is an assignment or a test (e.g. an assignment titled "Take-home midterm") |
 | Moodle calendar | Course, site and personal calendar events | Decides whether each is a test or an event |
@@ -112,10 +111,11 @@ A Gradescope or Connect copy of a Moodle assignment only counts as a duplicate w
 strictly the same work (same course, due within two days, matching title), so different
 work due the same day is never hidden.
 
-Jev makes judgments only; the code does the calendar math, following TypeSafe's
-date-extraction cookbook. If Jev is unsure (confidence under 0.60), the item gets
-an orange **check** tag. With no API key the app falls back to keyword matching.
-Each email or text chunk is judged once and then cached.
+Everything is read by plain rules on your own computer; nothing is sent to an AI service.
+The word "test" alone doesn't make an exam: a lab called "Oxidase Test" is an assignment, and
+"Exam 2 Review" is not the exam. When a date was worked out from words like "Friday" or
+"tomorrow" rather than stated, the item gets an orange **check** tag. Each email or text
+chunk is read once.
 
 ## Tray menu
 

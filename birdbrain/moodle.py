@@ -6,7 +6,7 @@ sesskey authenticate them. No web-service token is needed.
 
 Full scan (first run, or "Full rescan"): additionally walks every enrolled
 course: the assignment and quiz index tables, plus the text of the course
-page itself, which Jev reads for exam dates and deadlines that were only
+page itself, which is read for exam dates and deadlines that were only
 written in prose (syllabus notes, section summaries, labels).
 """
 from __future__ import annotations
@@ -22,13 +22,12 @@ from playwright.sync_api import BrowserContext, Page
 
 from browser import NeedsLogin, moodle_sso
 from config import CHUNK_CHARS, Settings
-from jev import EXAM_RE, Jev
+import reader
 from store import Item, Store, text_hash
 
 log = logging.getLogger(__name__)
 
-# Only course-page chunks that mention a date or an assessment word are sent
-# to Jev, which keeps the first scan's request count reasonable.
+# Only course-page chunks that mention a date or an assessment word are read.
 _PREFILTER = re.compile(
     r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
     r"|\b(mon|tues?|wed(nes)?|thu(rs)?|fri|sat(ur)?|sun)(day)?\b|\b\d{1,2}/\d{1,2}\b"
@@ -59,11 +58,7 @@ def _plain(s: str) -> str:
     return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", s or "")).split())
 
 
-def _level(title: str, module: str, kind: str) -> str:
-    """A test from Moodle's quiz activity is a quiz unless its title says exam, midterm, final or test."""
-    if module == "quiz" and kind == "test":
-        return "exam" if EXAM_RE.search(title) else "quiz"
-    return ""
+_level = reader.moodle_level
 
 
 def _cm_id(url: str) -> str | None:
@@ -72,11 +67,10 @@ def _cm_id(url: str) -> str | None:
 
 
 class Moodle:
-    def __init__(self, settings: Settings, store: Store, jev: Jev):
+    def __init__(self, settings: Settings, store: Store):
         self.s = settings
         self.base = settings.moodle_url.rstrip("/")
         self.store = store
-        self.jev = jev
         self.page: Page | None = None
         self.sesskey = ""
 
@@ -114,15 +108,7 @@ class Moodle:
         return first["data"]
 
     def _kind(self, title: str, module: str) -> str:
-        if module == "quiz":   # decided from the title alone (no Jev call), so nothing to cache
-            return self.jev.classify_title(title, module)
-        key = "kind:" + text_hash(module + "|" + title)
-        cached = self.store.get_meta(key)
-        if cached:
-            return cached
-        kind = self.jev.classify_title(title, module)
-        self.store.set_meta(key, kind)
-        return kind
+        return reader.kind_of(title, module or "calendar")
 
     # --- public -----------------------------------------------------------------
     def scan(self, ctx: BrowserContext, full: bool, progress=None) -> list[Item]:
@@ -260,8 +246,8 @@ class Moodle:
         try:
             return dparser.parse(text, fuzzy=True)
         except (ValueError, OverflowError):
-            j = self.jev.judge(text)
-            return datetime.combine(j.due, time(23, 59)) if j.due else None
+            day, _ = reader.find_date(text, datetime.now().date())
+            return reader.at_end_of(day) if day else None
 
     def _scan_course_page(self, cid: int, cname: str) -> list[Item]:
         new = []
@@ -277,10 +263,10 @@ class Moodle:
             h = text_hash(f"{cid}|{chunk}")
             if not _PREFILTER.search(chunk) or self.store.already_judged(h):
                 continue
-            j = self.jev.judge(chunk)
+            j = reader.judge(chunk)
             item_id = f"moodle:page:{cid}:{h[:12]}"
             self.store.mark_judged(h, item_id)
-            if not Jev.is_actionable(j) or not j.due or j.due < today:
+            if not reader.is_actionable(j) or not j.due or j.due < today:
                 continue
             item = Item(id=item_id, source="moodle", kind=j.kind, title=_headline(chunk),
                         due=datetime.combine(j.due, time(23, 59)), course=cname, url=url,

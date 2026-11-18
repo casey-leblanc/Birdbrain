@@ -1,4 +1,4 @@
-"""SQLite storage for found items and for text Jev has already judged."""
+"""SQLite storage for found items and for text that has already been read."""
 from __future__ import annotations
 
 import hashlib
@@ -80,7 +80,7 @@ class Store:
         with self._lock, self._db:
             self._db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
 
-    # --- judged text cache (avoids re-asking Jev about the same email) -------
+    # --- judged text cache (an email already read isn't read again) -------
     def already_judged(self, h: str) -> bool:
         with self._lock:
             return self._db.execute("SELECT 1 FROM judged WHERE hash=?", (h,)).fetchone() is not None

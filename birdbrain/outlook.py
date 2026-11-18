@@ -1,7 +1,7 @@
 """Outlook on the web: inbox previews and calendar week views.
 
 Only the message list is read, so no email is opened and nothing gets
-marked as read. Jev decides which previews describe an assignment, test
+marked as read. Plain rules decide which previews describe an assignment, test
 or event, and reads the date out of them.
 
 Outlook's page markup is not a public API; the selectors below target its
@@ -18,7 +18,7 @@ from playwright.sync_api import BrowserContext, Page
 
 from browser import NeedsLogin, complete_sign_in, on_ms_login
 from config import Settings
-from jev import Jev
+import reader
 from store import Item, Store, text_hash
 
 log = logging.getLogger(__name__)
@@ -62,11 +62,10 @@ def _settled_labels(page: Page) -> list[str]:
 
 
 class Outlook:
-    def __init__(self, settings: Settings, store: Store, jev: Jev):
+    def __init__(self, settings: Settings, store: Store):
         self.s = settings
         self.base = settings.outlook_url.rstrip("/")
         self.store = store
-        self.jev = jev
 
     def _open(self, ctx: BrowserContext, path: str, ready: str) -> Page:
         page = ctx.new_page()
@@ -144,10 +143,10 @@ class Outlook:
             if self.store.already_judged(h):
                 continue
             sent = _received_date(text, today)
-            j = self.jev.judge(text, sent=sent)
+            j = reader.judge(text, sent=sent)
             item_id = f"outlook:mail:{h[:16]}"
             self.store.mark_judged(h, item_id)
-            if not Jev.is_actionable(j) or not j.due or j.due < today - timedelta(days=self.s.overdue_days):
+            if not reader.is_actionable(j) or not j.due or j.due < today - timedelta(days=self.s.overdue_days):
                 continue
             lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
             subject = lines[1] if len(lines) > 1 else lines[0] if lines else "(email)"
@@ -199,8 +198,8 @@ class Outlook:
             day = dparser.parse(m.group(2)).date()
             when = datetime.combine(day, dparser.parse(t.group(1)).time() if t else time(0, 0))
             conf, review = None, False
-        else:  # unfamiliar label format (other locale): let Jev read it
-            j = self.jev.judge(label, role="the date of this calendar event")
+        else:  # unfamiliar label format (other locale): read whatever date it states
+            j = reader.judge(label)
             if not j.due:
                 return None
             when, conf, review = datetime.combine(j.due, time(0, 0)), j.confidence, j.needs_review
@@ -212,12 +211,7 @@ class Outlook:
                     detail=label[len(title) + 1:][:300].strip(), confidence=conf, needs_review=review)
 
     def _kind(self, title: str) -> str:
-        key = "kind:" + text_hash("cal|" + title)
-        cached = self.store.get_meta(key)
-        if not cached:
-            cached = self.jev.classify_title(title, "calendar")
-            self.store.set_meta(key, cached)
-        return cached
+        return reader.kind_of(title, "calendar")
 
 
 def _received_date(text: str, today: date) -> date:

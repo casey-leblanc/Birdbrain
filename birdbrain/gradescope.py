@@ -21,7 +21,7 @@ from playwright.sync_api import BrowserContext
 import filters
 from browser import NeedsLogin
 from config import Settings
-from jev import EXAM_RE, QUIZ_RE
+import reader
 from store import Item, Store, text_hash
 
 log = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ class Gradescope:
                     if not due or due < oldest:
                         continue
                     title = r["title"]
-                    kind = "test" if (EXAM_RE.search(title) or QUIZ_RE.search(title)) else "assignment"
+                    kind = reader.kind_of(title)
                     item = Item(item_id, "gradescope", kind, title, due, c["short"] or c["name"],
                                 url=r["href"] or f"{self.base}/courses/{c['id']}")
                     keep.add(item_id)

@@ -1,8 +1,4 @@
-"""Settings, paths and every tunable constant in one place.
-
-TypeSafe's guidance is to keep question thresholds and model names central so
-they are easy to review; they live at the bottom of this file.
-"""
+"""Settings, paths and every tunable constant in one place."""
 from __future__ import annotations
 
 import json
@@ -121,16 +117,10 @@ class Settings:
     mcgraw_course: str = ""                                # the Moodle course page it was clicked on
     mcgraw_sections: list = field(default_factory=list)  # Connect class pages seen (each lists every assignment)
     mcgraw_auto_renew: bool = False                        # re-open mcgraw_launch by itself when Connect signs out
-    typesafe_api_key: str = ""                             # falls back to TYPESAFE_API_KEY env var
-    typesafe_model: str = "jev-latest"
     notify: bool = True
     # Entries whose title or course contains any of these (case-insensitive) are archived.
     hidden_keywords: list = field(default_factory=list)
     extra: dict = field(default_factory=dict)
-
-    @property
-    def api_key(self) -> str:
-        return self.typesafe_api_key or os.environ.get("TYPESAFE_API_KEY", "")
 
     def save(self) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -148,13 +138,5 @@ class Settings:
         return cls(**known)
 
 
-# --- TypeSafe / Jev tuning -------------------------------------------------
-# An item is flagged "check this" in the report when Jev's confidence in any
-# answer that shaped it falls below this value.
-REVIEW_BELOW = 0.60
-# Minimum Noul value for an email or course-page snippet to count as
-# something the student must do or attend.
-ACTIONABLE_MIN = 0.55
-# Course pages are split into chunks of about this many characters before
-# being shown to Jev on the first full scan.
+# Course pages are read in chunks of about this many characters.
 CHUNK_CHARS = 900

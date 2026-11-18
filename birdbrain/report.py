@@ -31,7 +31,7 @@ import glass
 import prefs as prefs_mod
 import theme
 from config import REPORT_PATH, Settings
-from jev import EXAM_RE, QUIZ_RE
+import reader
 from store import Item, Store
 
 SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outlook calendar",
@@ -90,10 +90,7 @@ def test_level(i: Item) -> str | None:
         return None
     if i.level in ("exam", "quiz"):
         return i.level
-    t = display_title(i)
-    if EXAM_RE.search(t):
-        return "exam"
-    return "quiz" if QUIZ_RE.search(t) else "exam"
+    return reader.level(display_title(i)) or "exam"
 
 
 def build(store: Store, settings: Settings, now: datetime | None = None) -> Board:

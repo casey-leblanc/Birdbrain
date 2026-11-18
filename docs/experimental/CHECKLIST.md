@@ -8,7 +8,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 1. Branch, this checklist, NEEDS-HUMAN.md, version 2.0.0 in `birdbrain/version.py`
 - [x] 2. Offline unit tests in `tests/` for the store, dates, filters and the list page
 - [ ] 3. Build workflow: tests, build, packaged self-test, real start, pre-release `exp-<version>-<sha7>`, `--build-info`
-- [ ] 4. No AI: Jev and TypeSafe removed; plain rules; a lab with "test" in its name is an assignment
+- [x] 4. No AI: Jev and TypeSafe removed; plain rules; a lab with "test" in its name is an assignment
 - [ ] 5. "What is this?": correct a card's kind once, sticks for the series
 - [ ] 6. Fixes: one running copy, scan after sleep and stay awake, 11:59 PM and no-time dates, sign-in card
 - [ ] 7. Self-update from `exp-` pre-releases, no token, SHA-256 checked
@@ -18,3 +18,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 ### Decisions
 
 - Version 2.0.0: the list, the keys and the data all change shape from 1.1.2, so it is a new major version.
+- Jev's replacement is `reader.py`: word lists and calendar arithmetic. "test" alone is an exam only when no lab
+  or homework word is near it; "review", "practice" and "corrections" are never the exam itself.
+- Kinds are no longer cached per title, so a wrong answer saved by 1.1.2 is replaced at the next scan.
+- A day worked out from "Friday" or "tomorrow" keeps the "check" tag; a stated month and day doesn't.

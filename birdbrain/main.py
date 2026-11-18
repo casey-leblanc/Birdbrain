@@ -38,7 +38,7 @@ import theme
 from browser import NeedsLogin, interactive_login, open_context
 from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
                     migrate_old_data)
-from jev import Jev, is_receipt
+from reader import is_receipt
 from keyword_dialog import edit_keywords
 from moodle import Moodle
 from gradescope import Gradescope
@@ -161,7 +161,6 @@ class App:
     def __init__(self):
         self.settings = Settings.load()
         self.store = Store()
-        self.jev = Jev(self.settings)
         self._drop_receipts()
         self.lock = threading.Lock()          # one browser session at a time
         self.wake = threading.Event()
@@ -558,7 +557,7 @@ class App:
         try:
             with self.lock, open_context(self.settings) as ctx:
                 self.progress = mine
-                new = Outlook(self.settings, self.store, self.jev).scan_mail_since(
+                new = Outlook(self.settings, self.store).scan_mail_since(
                     ctx, since, progress=progress, stop=self.stop_mail.is_set)
         except NeedsLogin as e:
             log.warning("%s", e)
@@ -610,11 +609,11 @@ class App:
                         self.progress.at(name)
                         try:
                             if name == "Moodle":
-                                new += Moodle(s, self.store, self.jev).scan(ctx, full=full, progress=step(name))
+                                new += Moodle(s, self.store).scan(ctx, full=full, progress=step(name))
                                 if full:
                                     self.store.set_meta("first_scan_done", "1")
                             elif name == "Outlook":
-                                new += Outlook(s, self.store, self.jev).scan(ctx, progress=step(name))
+                                new += Outlook(s, self.store).scan(ctx, progress=step(name))
                             elif name == "Gradescope":
                                 new += Gradescope(s, self.store).scan(ctx)
                             else:
@@ -628,11 +627,9 @@ class App:
             finally:
                 self.progress = None
 
-        # Keyword matching is the normal case, so only say when Jev did the reading.
-        jev = " Read by Jev." if self.jev.online else ""
         updated = datetime.now().strftime("%I:%M %p").lstrip("0")
         waiting = f" Waiting for you to sign in to {_and(self.waiting)}." if self.signing_in.is_set() and self.waiting else ""
-        self.status = f"Updated {updated}.{jev}" + (f" {'; '.join(problems)}." if problems else "") + waiting
+        self.status = f"Updated {updated}." + (f" {'; '.join(problems)}." if problems else "") + waiting
         self.problems = problems
         due_today = self._refresh_view()
 

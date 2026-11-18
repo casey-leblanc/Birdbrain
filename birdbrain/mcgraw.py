@@ -26,7 +26,7 @@ from playwright.sync_api import BrowserContext
 
 from browser import NeedsLogin, relaunch_connect
 from config import Settings
-from jev import EXAM_RE, QUIZ_RE
+import reader
 from store import Item, Store, text_hash
 
 log = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ class McGraw:
                 if not due or due < oldest:
                     continue
                 title = r["title"]
-                kind = "test" if (EXAM_RE.search(title) or QUIZ_RE.search(title)) else "assignment"
+                kind = reader.kind_of(title)
                 item = Item(item_id, "mcgraw", kind, title, due, r["course"], url=r["href"] or r["page"], needs_review=not has_time)
                 keep.add(item_id)
                 if self.store.upsert(item):
