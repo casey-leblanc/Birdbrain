@@ -29,6 +29,7 @@ COMMANDS = (
     ("keys", "Show the keys", "shortcuts keyboard help", "?"),
     ("updates", "Check for updates", "version new build", ""),
     ("telegram", "Set up your phone (Telegram)", "phone bot", ""),
+    ("problem", "Report a problem", "bug help broken wrong support log", ""),
     ("quit", "Quit Birdbrain", "exit close stop", ""),
 )
 
@@ -62,7 +63,7 @@ var CMD_DO={scan:function(){scanNow();},quick:function(){openQuick();},add:funct
   notifications:function(){openSettings('notifications');},
   signin:function(){api('/api/sign-in').then(function(){toast("The sign-in window is opening. It closes by itself once you're signed in.");}).catch(function(e){toast(e.message);});},
   keys:function(){openKeys();},updates:function(){MENU_DO.update();},
-  telegram:function(){openSettings('advanced','fold-telegram');},quit:function(){quitNow();}};
+  telegram:function(){openSettings('advanced','fold-telegram');},problem:function(){openProblem();},quit:function(){quitNow();}};
 function pickLayout(to){if(PREFS.layout===to){toast('Already in '+(to==='glass'?'Glass':'Focus'));return;}
   var r=settings.querySelector('input[name=layout][value='+to+']');if(r)r.click();}
 function showBin(kind){var bin=wrap.querySelector('.bin.'+kind);if(!bin){toast('Nothing there yet');return;}

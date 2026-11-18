@@ -163,7 +163,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 6. Repeating personal items from quick write
 - [x] 7. Each day says its load; a heavy day ahead is called out once
 - [x] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
-- [ ] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
+- [x] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
 - [ ] 10. The states in between, each in one line
 - [ ] 11. Backup: export and import personal items and labels
 - [ ] 12. Access: keyboard, focus, contrast, names, text size
@@ -242,3 +242,12 @@ One test for everything here: does it help a student see what to do and start on
 - While the first scan runs, the empty list itself says what is being read (the same words as the status dot),
   kept current as the scan goes.
 - The welcome page had no browser test before; `tests/ui/test_first_run.py` is one.
+- Report a problem (`trouble.py`) has no way to send anything: it imports nothing that talks to a network, and a
+  test holds it to that. The zip holds about.txt (version, system, card counts as numbers), settings.txt, the last
+  400 lines of the log, and the student's own words if any.
+- Scrubbing is by two means: every title, course name and note in the store is replaced wherever it appears, and
+  the rest goes by shape (emails, web addresses and hosts, bot tokens and long keys, @names, "for A. Teacher",
+  course codes, the computer's user name and home folder). Settings that say where the student studies or what
+  they hide are blanked whole. Rules can miss something oddly written, so the window shows every line and asks the
+  student to look before saving, and what is saved is exactly what was shown.
+- The zip goes to Downloads and is shown there, selected; nothing opens an email or a web page.

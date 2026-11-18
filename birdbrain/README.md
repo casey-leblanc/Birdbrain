@@ -115,7 +115,7 @@ In the top corner of the list:
   the reason beside it, when something needs you. Point at it to see when the last scan finished. Click it to
   scan now.
 - **The menu** (⋯, or press M): Quick write, Search and commands, Add item, Settings, Scan now, Check for
-  updates, Quit.
+  updates, Report a problem, Quit.
 
 If a site needs signing in to again, a card at the top of the list says so, with a **Sign in** button.
 
@@ -295,6 +295,10 @@ it; Birdbrain keeps scanning. Quit stops it.
 - **A card shouldn't be there.** Archive it, or add a keyword for the whole kind of thing.
 - **The window won't open.** Start `Birdbrain.exe` again: it brings the running copy's window forward.
 - Settings › Advanced › Files has **Open log**, which says what each scan did.
+- **Report a problem** (in the menu) makes a small zip to send to whoever is helping you: the end of the log, your
+  settings, the version, and your own words if you add any. Names, emails, course titles, addresses and tokens are
+  taken out first, the window shows you every line that would go in, and the zip is saved to your Downloads
+  folder. Birdbrain sends nothing anywhere; you attach the file yourself.
 
 ## Credits
 

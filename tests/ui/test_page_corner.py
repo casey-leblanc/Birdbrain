@@ -39,7 +39,7 @@ class Corner(PageTest):
         menu = self.page.locator("#app-menu")
         self.assertEqual(menu.locator("[role=menuitem]").all_inner_texts(),
                          ["Quick write\nSpace", "Search and commands\nCtrl+K", "Add item\nN", "Settings\nS", "Scan now\nR",
-                          "Check for updates", "Quit Birdbrain"])
+                          "Check for updates", "Report a problem", "Quit Birdbrain"])
         menu.get_by_role("menuitem", name="Settings").click()
         self.page.locator("#settings").wait_for(state="visible")
         self.assertFalse(menu.is_visible())

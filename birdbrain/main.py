@@ -42,6 +42,7 @@ import prefs
 import report
 import theme
 import toast
+import trouble
 import updater
 from browser import NeedsLogin, interactive_login, open_context
 from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
@@ -133,6 +134,15 @@ def _trace(path: list) -> list[tuple[float, float]]:
         else:
             pts.append(step)
     return pts
+
+
+def _reveal(path: Path) -> None:
+    """Show a file in its folder, selected."""
+    import subprocess
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer", "/select,", str(path)])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
 
 
 def make_icon(badge: int | None = None, size: int = 64) -> Image.Image:
@@ -336,7 +346,12 @@ class App:
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
                 "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update,
                 "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide, "notifications": self.api_notifications,
-                "telegram": self.api_telegram}
+                "telegram": self.api_telegram, "problem": self.api_problem}
+
+    def api_problem(self, body: dict) -> dict:
+        """Report a problem (trouble.py): what would go in the zip, or the zip itself, saved and shown in its folder.
+        Nothing is sent anywhere."""
+        return trouble.action(self.store, body, self.status, reveal=_reveal)
 
     # --- the phone, through the student's own Telegram bot (phone.py); off unless turned on -----
     def _add_from_phone(self, text: str) -> dict:

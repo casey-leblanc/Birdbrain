@@ -440,7 +440,7 @@ def status_state(status: str, scanning: bool = False) -> str:
 
 
 MENU = (("quick", "Quick write", "Space"), ("find", "Search and commands", "Ctrl+K"), ("add", "Add item", "N"), ("settings", "Settings", "S"), ("scan", "Scan now", "R"),
-        ("update", "Check for updates", ""), ("quit", "Quit Birdbrain", ""))
+        ("update", "Check for updates", ""), ("problem", "Report a problem", ""), ("quit", "Quit Birdbrain", ""))
 
 
 def _tools(status: str, progress: dict | None) -> str:
@@ -968,6 +968,23 @@ def _filter_dialog() -> str:
             '</p></form></dialog>')
 
 
+def _problem_dialog() -> str:
+    """Report a problem (trouble.py): everything that would go in the zip, shown in full before it is saved."""
+    return ('<dialog id="problem" class="sheet-dialog" aria-labelledby="problem-title"><div class="sheet">'
+            '<div class="sheet-head"><h2 id="problem-title">Report a problem</h2>'
+            '<button type="button" class="act" data-close>Close</button></div>'
+            '<p class="hint">This makes a small zip you can send to whoever is helping you. <b>Birdbrain sends nothing '
+            'anywhere.</b> Names, emails, course titles, addresses and tokens are taken out first. Everything that would '
+            'go in is below: look through it before you save.</p>'
+            '<label class="field"><span>What went wrong? <em>optional</em></span>'
+            '<textarea id="problem-note" rows="3" maxlength="2000" placeholder="What you did, and what happened instead"></textarea></label>'
+            '<div id="problem-files" aria-live="polite"></div>'
+            '<p class="form-error" id="problem-error" role="alert"></p>'
+            '<div class="actions-row"><button type="button" class="act" data-close>Cancel</button>'
+            '<button type="button" class="btn primary" id="problem-save">Save the zip</button></div>'
+            '<p class="hint" id="problem-msg" aria-live="polite"></p></div></dialog>')
+
+
 def _grounds(p: dict) -> dict:
     """Each layout's ground colour, day and night, for the chosen themes: the photo's own colour behind Glass, the
     canvas in Focus. A layout switch crossfades through the new layout's ground."""
@@ -1012,7 +1029,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_filter_dialog()}{_keys_dialog()}{snooze.dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_filter_dialog()}{_keys_dialog()}{snooze.dialog()}{_problem_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -1510,6 +1527,11 @@ TOOLS_CSS = """
 .field.time{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;max-width:460px}
 .field.time input{width:auto;flex:none}
 .notify-rows.off{opacity:.5}
+#problem{width:min(760px,calc(100vw - 32px))}
+#problem textarea{width:100%;font:inherit;color:inherit;background:var(--q-chip);border:1px solid var(--q-line);border-radius:8px;padding:10px 12px;resize:vertical}
+#problem-files{margin:14px 0 4px}
+.problem-text{max-height:260px;overflow:auto;margin:0 0 12px;padding:10px 12px;border-radius:8px;background:var(--q-chip);
+ font:12px/1.5 ui-monospace,Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
 .grp[data-load]::after{content:attr(data-load);margin-left:auto;font-size:.75rem;font-style:normal;font-weight:400;color:var(--q-muted);white-space:nowrap}
 .grp.heavy[data-load]::after{font-weight:700;color:var(--q-fg)}
 .rep{font-size:.75rem;color:var(--q-muted);white-space:nowrap}.rep::before{content:"↻ "}
@@ -2153,7 +2175,7 @@ function closeMenu(focus){var m=menuParts();if(!m.box||m.box.hidden)return;m.box
   m.btn.setAttribute('aria-expanded','false');if(focus)m.btn.focus();}
 function openMenu(){var m=menuParts();if(!m.box)return;m.box.hidden=false;m.btn.setAttribute('aria-expanded','true');
   m.box.querySelector('[role=menuitem]').focus();}
-var MENU_DO={quick:function(){openQuick();},find:function(){openFilter('');},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
+var MENU_DO={quick:function(){openQuick();},find:function(){openFilter('');},problem:function(){openProblem();},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
   update:function(){openSettings('updates','updates-sec');document.getElementById('update-check').click();},
   quit:function(){quitNow();}};
 on('click','#open-menu',function(){var m=menuParts();if(m.box.hidden)openMenu();else closeMenu(true);});
@@ -2382,7 +2404,8 @@ renderLabels();
 var keysDlg=document.getElementById('keys');
 function openKeys(){if(!document.querySelector('dialog[open]'))keysDlg.showModal();}
 document.getElementById('show-keys').addEventListener('click',function(){settings.close();openKeys();});
-[settings,itemDlg,keysDlg].forEach(function(d){
+var problemDlg=document.getElementById('problem');
+[settings,itemDlg,keysDlg,problemDlg].forEach(function(d){
   d.addEventListener('click',function(ev){if(ev.target===d)closeSheet(d);});
   d.addEventListener('cancel',function(ev){ev.preventDefault();closeSheet(d);});   /* Esc */
   d.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){closeSheet(d);});});
@@ -2549,6 +2572,23 @@ var soundOn=document.getElementById('sound-on');soundOn.checked=PREFS.sound!==fa
 soundOn.addEventListener('change',function(){PREFS.sound=soundOn.checked;savePrefs({sound:soundOn.checked});});
 document.getElementById('sound-test').addEventListener('click',function(){api('/api/sound').catch(function(e){toast(e.message);});});
 
+/* Report a problem: every file that would go in the zip is listed with its whole text; Save makes the zip from
+   exactly what is shown. Nothing is sent anywhere. */
+var problemNote=document.getElementById('problem-note'),problemFiles=document.getElementById('problem-files'),
+  problemMsg=document.getElementById('problem-msg'),problemErr=document.getElementById('problem-error');
+function showProblemFiles(files){problemFiles.textContent='';files.forEach(function(f,i){
+    var d=document.createElement('details'),s=document.createElement('summary'),pre=document.createElement('pre'),n=f.text.split('\\n').length;
+    d.className='fold';d.open=i===0;s.innerHTML='<span class="fold-t"></span><span class="fold-h"></span>';
+    s.firstChild.textContent=f.name;s.lastChild.textContent=n+(n===1?' line':' lines');
+    pre.className='problem-text';pre.tabIndex=0;pre.textContent=f.text;d.appendChild(s);d.appendChild(pre);problemFiles.appendChild(d);});}
+function askProblem(save){problemErr.textContent='';
+  return api('/api/problem',{note:problemNote.value,save:!!save}).then(function(r){showProblemFiles(r.files);return r;})
+    .catch(function(e){problemErr.textContent=e.message;throw e;});}
+function openProblem(){if(!LIVE||document.querySelector('dialog[open]'))return;closeMenu(false);
+  problemNote.value='';problemMsg.textContent='';problemFiles.textContent='';problemDlg.showModal();problemNote.focus();askProblem(false).catch(function(){});}
+problemNote.addEventListener('change',function(){askProblem(false).catch(function(){});});   /* your words are scrubbed and shown too */
+document.getElementById('problem-save').addEventListener('click',function(){var b=this;b.disabled=true;
+  askProblem(true).then(function(r){problemMsg.textContent=r.message;}).catch(function(){}).then(function(){b.disabled=false;});});
 /* Settings > Notifications: every change is saved as it's made; "Show me one" shows one now */
 (function(){var on=document.getElementById('notify-on');if(!on)return;
   var msg=document.getElementById('notify-msg'),rows=document.getElementById('notify-rows'),
