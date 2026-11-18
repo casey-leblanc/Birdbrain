@@ -10,3 +10,6 @@ ROUND-2-CONTEXT.md
 PRODUCT.md
 DESIGN.md
 .impeccable/
+
+# Written by build.py while it builds (which build this is)
+birdbrain/assets/build.json

@@ -13,6 +13,7 @@ only the final zip is written into this folder.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "birdbrain"
 sys.path.insert(0, str(SRC))
+from buildinfo import tag_for  # noqa: E402
 from version import VERSION  # noqa: E402
 WORK = Path(os.environ["LOCALAPPDATA"]) / "Birdbrain-build"
 OUT = ROOT / "dist"
@@ -47,9 +49,24 @@ def version_file(path: Path) -> None:
 )""", encoding="utf-8")
 
 
+def stamp() -> dict:
+    """Which build this is, for the app itself (buildinfo.current): the version and the commit it was built from."""
+    commit = os.environ.get("GITHUB_SHA", "")
+    if not commit:
+        try:
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True,
+                                    check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            commit = "local"
+    info = {"version": VERSION, "commit": commit[:7], "tag": tag_for(VERSION, commit)}
+    (SRC / "assets" / "build.json").write_text(json.dumps(info), encoding="utf-8")
+    return info
+
+
 def main() -> None:
     shutil.rmtree(WORK, ignore_errors=True)
     WORK.mkdir(parents=True)
+    info = stamp()
     make_icon(WORK / "birdbrain.ico")
     version_file(WORK / "version.txt")
     subprocess.run([
@@ -74,7 +91,9 @@ def main() -> None:
         for f in sorted(app.rglob("*")):
             z.write(f, Path("Birdbrain") / f.relative_to(app))
     size = sum(f.stat().st_size for f in app.rglob("*") if f.is_file())
-    print(f"\nBuilt {app} ({size / 1e6:.0f} MB unpacked)\nZip:  {zip_path} ({zip_path.stat().st_size / 1e6:.0f} MB)")
+    (SRC / "assets" / "build.json").unlink()   # the source tree stays unstamped
+    print(f"\nBuilt {info['tag']}: {app} ({size / 1e6:.0f} MB unpacked)\n"
+          f"Zip:  {zip_path} ({zip_path.stat().st_size / 1e6:.0f} MB)")
 
 
 if __name__ == "__main__":

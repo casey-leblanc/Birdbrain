@@ -1,0 +1,110 @@
+# Builds the experimental Windows app on GitHub's Windows machine, checks the build with its own self-test, starts it
+# the way a student would, and attaches the zip to a pre-release. Nothing is published unless every step passes, and
+# nothing here ever makes a normal release: experimental builds are pre-releases tagged exp-<version>-<commit>.
+name: Build experimental app
+
+on:
+  push:
+    branches: [birdbrain-experimental]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the release notes list the commits since the last pre-release
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install -r birdbrain/requirements.txt pyinstaller
+
+      - name: Test
+        run: python -m unittest discover tests
+
+      - name: Build
+        run: python build.py
+
+      - name: Self-test the build
+        id: selftest
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $zip = Get-ChildItem dist\*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath selftest
+          Start-Process -FilePath selftest\Birdbrain\Birdbrain.exe -ArgumentList '--selftest', "$PWD\selftest-result.txt" -Wait
+          Get-Content selftest-result.txt
+          if (-not (Select-String -Path selftest-result.txt -Pattern '^ALL PASS$' -Quiet)) { throw "The packaged app failed its self-test" }
+          Start-Process -FilePath selftest\Birdbrain\Birdbrain.exe -ArgumentList '--build-info', "$PWD\build-info.json" -Wait
+          $info = Get-Content build-info.json | ConvertFrom-Json
+          $want = "$($env:GITHUB_SHA.Substring(0, 7))"
+          if ($info.commit -ne $want) { throw "The build says it is $($info.tag), not commit $want" }
+          if (-not $info.tag.StartsWith('exp-')) { throw "An experimental build must be tagged exp-, not $($info.tag)" }
+          "tag=$($info.tag)" >> $env:GITHUB_OUTPUT
+          "version=$($info.version)" >> $env:GITHUB_OUTPUT
+
+      - name: Start the app for real
+        # The self-test doesn't go through a normal start. This does: the app must come up and stay up, and a
+        # second copy must hand over to it and leave (not sit behind an "already running" box).
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $env:APPDATA = "$PWD\launch-data"
+          New-Item -ItemType Directory $env:APPDATA | Out-Null
+          $exe = "$PWD\selftest\Birdbrain\Birdbrain.exe"
+          $log = "$env:APPDATA\Birdbrain\birdbrain.log"
+          $first = Start-Process -FilePath $exe -ArgumentList '--background' -PassThru
+          $up = $false
+          for ($i = 0; $i -lt 90 -and -not $first.HasExited; $i++) {
+            Start-Sleep 1
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'List page served' -Quiet)) { $up = $true; break }
+          }
+          if (Test-Path $log) { Get-Content $log }
+          if (-not $up) { throw "Birdbrain didn't start (exited: $($first.HasExited))" }
+          foreach ($n in 1, 2) {
+            $again = Start-Process -FilePath $exe -ArgumentList '--background' -PassThru
+            if (-not $again.WaitForExit(30000)) { $again.Kill(); throw "A second copy didn't hand over and leave" }
+          }
+          Start-Sleep 5
+          if ($first.HasExited) { throw "Birdbrain stopped by itself (exit code $($first.ExitCode))" }
+          if (Select-String -Path $log -Pattern 'Traceback|CRITICAL' -Quiet) { throw "Birdbrain logged an error while starting" }
+          taskkill /PID $first.Id /T /F | Out-Null
+          "Started, stayed up, and two more copies handed over to it."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Birdbrain-windows
+          path: |
+            dist/*.zip
+            selftest-result.txt
+          if-no-files-found: error
+
+      - name: Pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.selftest.outputs.tag }}
+          VERSION: ${{ steps.selftest.outputs.version }}
+        run: |
+          # what's new: the subject of each commit since the experimental build before this one
+          previous=$(gh release list --limit 30 --json tagName --jq '[.[].tagName | select(startswith("exp-"))][0] // ""' || true)
+          if [ -n "$previous" ] && git rev-parse -q --verify "refs/tags/$previous" >/dev/null; then
+            git log --no-merges --format='- %s' "$previous..HEAD" > notes.md
+          else
+            git log --no-merges --format='- %s' -1 > notes.md
+          fi
+          [ -s notes.md ] || echo "- Rebuilt" > notes.md
+          gh release create "$TAG" dist/*.zip selftest-result.txt --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Birdbrain experimental $VERSION (${GITHUB_SHA::7})" --notes-file notes.md

@@ -820,6 +820,11 @@ if __name__ == "__main__":
         out = Path(sys.argv[sys.argv.index("--selftest") + 1]) if len(sys.argv) > sys.argv.index("--selftest") + 1 \
             else Path.cwd() / "birdbrain-selftest.txt"
         sys.exit(selftest.run(out))
+    if "--build-info" in sys.argv:   # which build this is, written to the file named after the flag
+        import json
+        import buildinfo
+        Path(sys.argv[sys.argv.index("--build-info") + 1]).write_text(json.dumps(buildinfo.current()), encoding="utf-8")
+        sys.exit(0)
     if already_running():
         if not show_running_copy():   # an older copy without the signal
             import tkinter as tk
