@@ -142,7 +142,7 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
  text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
 .act::before{content:"";position:absolute;inset:-11px -2px}   /* a 45px hit area, same look */
 .act:hover{color:#fff;text-decoration-thickness:2px}
-.act.del{text-decoration-color:var(--g-red);text-decoration-thickness:2px}
+.act.del,.act.label-del{text-decoration-color:var(--g-red);text-decoration-thickness:2px}
 .actions .act,.btn,.state{font:inherit;color:rgba(255,255,255,.92);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
  border-radius:6px;text-decoration:none;cursor:pointer;transition:background-color .3s,color .3s,box-shadow .2s ease-out}
 .actions .act{font-size:1rem;min-height:44px;padding:8px 16px;white-space:nowrap}

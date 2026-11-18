@@ -195,7 +195,21 @@ class ListServer:
                 "warnings": custom.focus_warnings(p)}
 
     def save_prefs(self, body: dict) -> dict:
-        return self._custom(prefs.update(self.store, body))
+        """Save what the page changed. Labels come as the whole list: an item whose label was deleted keeps
+        everything else ("cleared" says which lost it, for Undo, and "relabel" puts labels back on items)."""
+        before = {x["id"] for x in prefs.load(self.store)["labels"]} if "labels" in body else set()
+        p = prefs.update(self.store, body)
+        out = self._custom(p)
+        if "labels" in body:
+            now = {x["id"] for x in p["labels"]}
+            out["cleared"] = {gone: self.store.clear_label(gone) for gone in sorted(before - now)}
+            relabel = body.get("relabel") if isinstance(body.get("relabel"), dict) else {}
+            for label_id, item_ids in relabel.items():
+                if label_id in now and isinstance(item_ids, list):
+                    self.store.set_label([str(i) for i in item_ids][:500], label_id)
+            out["label_notes"] = prefs.label_notes(p)
+            self.on_change()
+        return out
 
     def upload_photo(self, slot: str, data: bytes) -> dict:
         p = custom.save_photo(self.store, slot, data)

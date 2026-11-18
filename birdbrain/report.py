@@ -608,13 +608,14 @@ def _addresses(settings: Settings) -> str:
 
 
 # Settings is grouped by what you came to do, one tab each.
-SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Courses"), ("keywords", "Keywords"), ("app", "App"))
+SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Courses"), ("labels", "Labels"),
+                 ("keywords", "Keywords"), ("app", "App"))
 
 # Keyboard shortcuts. Each entry: the keys (alternatives, each a combination) and what they do. The first group works
 # whenever no window is open and you aren't typing; the second while an item has focus.
 KEYS = (("Anywhere", ((("Space",),), "Quick write: add something"), ((("M",),), "Open the menu"), ((("S",),), "Open Settings"),
          ((("R",),), "Scan now"), ((("N",),), "Add an item with the full form"), ((("J",),), "Go to the first item"),
-         ((("?",),), "Show these keys"), ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
+         ((("#",), ("@",)), "Show only one label or class"), ((("?",),), "Show these keys"), ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
         ("On an item", ((("↓",), ("J",)), "Next item"), ((("↑",), ("K",)), "Previous item"),
          ((("←",), ("→",)), "The column beside"), ((("X",),), "Tick it off, or untick it"),
          ((("E",),), "Its details"), ((("O",),), "Open it in Moodle or Outlook"),
@@ -757,6 +758,15 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<p class="hint" id="scan-msg" aria-live="polite"></p></div>')
     course_pane = ('<div class="set-sec"><p class="hint">Give each course code its own colour and a nickname. '
                    f'Changes apply right away.</p>{courses}</div>')
+    label_pane = (
+        '<div class="set-sec"><p class="hint">Labels are for things that aren’t classes. Type <kbd>#life</kbd> in quick '
+        'write, or pick one in a card’s details. Changes apply right away.</p><ul class="courses labels" id="label-list"></ul>'
+        '<form class="kw-add" id="label-form" novalidate><label class="field"><span>New label</span>'
+        '<input id="label-new" maxlength="24" autocomplete="off" placeholder="Gym, Family, Club…"></label>'
+        '<input type="color" id="label-new-color" value="#7c9a5e" aria-label="The new label’s colour">'
+        '<button type="submit" class="btn">Add label</button></form>'
+        '<p class="form-error" id="label-error" role="alert"></p>'
+        '<p class="hint kw-msg" id="label-msg" aria-live="polite"></p></div>')
     keywords = (
         '<div class="set-sec"><p class="hint">Entries whose title or course contains one of these words move to Archived, '
         'at the bottom of your list. Nothing is deleted; remove a keyword and its entries come back.</p>'
@@ -784,7 +794,8 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<div class="sheet-head"><h2 id="settings-title">Settings</h2>'
         '<button type="button" class="act" data-close>Close</button></div>'
         f'<div class="tabs" role="tablist" aria-labelledby="settings-title">{tabs}</div>'
-        + pane("look", look) + pane("scanning", scanning) + pane("courses", course_pane) + pane("keywords", keywords)
+        + pane("look", look) + pane("scanning", scanning) + pane("courses", course_pane) + pane("labels", label_pane)
+        + pane("keywords", keywords)
         + pane("app", app) + '</div></dialog>')
 
 
@@ -828,6 +839,15 @@ def _quick_dialog() -> str:
             'add another<span> · </span><kbd>Esc</kbd> close</p></form></dialog>')
 
 
+def _filter_dialog() -> str:
+    """Show only one label or class: # or @ opens this line, and the list narrows as you type."""
+    return ('<dialog id="filter" class="quick" aria-label="Show only"><form id="filter-form" novalidate>'
+            '<input id="filter-line" maxlength="60" autocomplete="off" spellcheck="false" placeholder="#label, @class, or a word" '
+            'aria-label="Show only" aria-describedby="filter-hint"><p id="filter-says" class="chips" aria-live="polite"></p>'
+            '<p id="filter-hint" class="quick-hint"><kbd>Enter</kbd> keep it<span> · </span><kbd>Esc</kbd> show everything'
+            '</p></form></dialog>')
+
+
 def _grounds(p: dict) -> dict:
     """Each layout's ground colour, day and night, for the chosen themes: the photo's own colour behind Glass, the
     canvas in Focus. A layout switch crossfades through the new layout's ground."""
@@ -858,7 +878,8 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
     photo = (lambda n: f"/bg/{n}.jpg?token={token}") if token else glass.file_url
     page_data = json.dumps({"prefs": prefs, "themes": list(prefs_mod.GLASS_THEMES if glass_layout else prefs_mod.FOCUS_THEMES),
                             "modes": list(theme.MODES), "grounds": _grounds(prefs),
-                            "keywords": keyword_counts(b, settings.hidden_keywords), "wing": WING})
+                            "keywords": keyword_counts(b, settings.hidden_keywords), "wing": WING,
+                            "label_notes": prefs_mod.label_notes(prefs)})
     page_data = page_data.replace("</", "<\\/")   # can't close the <script> early
     return "".join([
         f'<!doctype html><html lang="en"{' class="app-window"' if app_window and token else ''} data-frame="{e(prefs["frame"])}" data-layout="{e(layout)}" data-theme="{e(prefs_mod.active_theme(prefs))}" data-mode="{mode}" '
@@ -871,7 +892,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_keys_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update, hotkey)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_filter_dialog()}{_keys_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -1076,7 +1097,7 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
  text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
 .act::before{content:"";position:absolute;inset:-12px -4px}   /* a 44px hit area, same look */
 .act:hover{color:var(--text)}
-.act.del{color:var(--accent)}
+.act.del,.act.label-del{color:var(--accent)}
 .btn{font:inherit;font-weight:600;min-height:44px;padding:0 20px;color:var(--struct);background:none;border:1px solid var(--line);border-radius:8px;cursor:pointer;
  transition:border-color .15s,background-color .15s}
 .btn:hover{border-color:var(--struct);background:var(--hover)}
@@ -1392,7 +1413,14 @@ TOOLS_CSS = """
 .quick-hint kbd{font:inherit;font-weight:600;padding:1px 5px;margin:0 2px 0 0;border:1px solid var(--q-line);border-radius:4px}
 .quick-hint span{opacity:.6}
 .lab{display:inline-flex;align-items:center;gap:5px;font-size:.8125rem;font-weight:600;white-space:nowrap}
-.lab::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--lab);flex:none}
+/* the label's colour, with a thin outline in the text's own colour so it shows on any theme */
+.lab::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--lab);flex:none;box-shadow:0 0 0 1px color-mix(in srgb,currentColor 45%,transparent)}
+.row .lab,.row .code{cursor:pointer}
+.bands .row[hidden],.bands ul[hidden],.bands h3[hidden]{display:none!important}   /* filtered out */
+.filter-chip{font:inherit;font-size:.8125rem;font-weight:600;min-height:28px;padding:0 10px;margin-right:4px;border-radius:14px;cursor:pointer;
+ color:var(--tool-fg);background:var(--tool-hover);border:1px solid color-mix(in srgb,currentColor 35%,transparent);white-space:nowrap}
+.labels li{grid-template-columns:32px 1fr auto;grid-template-areas:"color nick reset" ". warn warn"}
+#label-form input[type=color]{width:44px;height:44px;padding:8px;border:0;background:none;cursor:pointer}
 .row.landed{animation:landed 1.8s ease-out}
 @keyframes landed{0%{box-shadow:0 0 0 2px var(--q-fg)}100%{box-shadow:0 0 0 2px transparent}}
 @media (prefers-reduced-motion:reduce){.quick[open],.chip{animation:none}.row.landed{animation:none;outline:2px solid var(--q-fg)}}
@@ -1830,6 +1858,7 @@ function saveCourse(code){pendingCourses[code]=PREFS.courses[code]||null;clearTi
 
 /* --- the board (re-bound after every refresh) ----------------------------- */
 function bindBoard(){
+  applyFilter();   /* a filter stays on when the list is rebuilt */
   document.querySelectorAll('.row[data-id] .tick').forEach(function(box){
     var li=box.closest('.row');
     if(!LIVE){box.disabled=true;box.title='Open the list from the Birdbrain icon to tick items off';return;}
@@ -1942,7 +1971,7 @@ function wireMenu(){var m=menuParts();if(!m.btn)return;
 document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.tools'))closeMenu(false);});
 /* double-click a card (not its link, tick box or buttons) for its details */
 wrap.addEventListener('dblclick',function(ev){var li=ev.target.closest('.row[data-id]');
-  if(li&&!ev.target.closest('a,button,input,label,summary'))openDetails(li);});
+  if(li&&!ev.target.closest('a,button,input,label,summary,.lab,.code'))openDetails(li);});   /* a tag is for filtering */
 var quickAsks=null;
 function paintStatus(s){if(typeof s.quick==='number'){if(quickAsks!==null&&s.quick>quickAsks)openQuick();quickAsks=s.quick;}   /* the shortcut, with no small window to open */
   var st=wrap.querySelector('.status');if(!st)return;
@@ -1960,7 +1989,7 @@ function paintStatus(s){if(typeof s.quick==='number'){if(quickAsks!==null&&s.qui
   var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
   if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
   else bar.removeAttribute('aria-valuenow');}
-function canRefresh(){if(document.hidden||settings.open||itemDlg.open||quick.open||keysDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||quick.open||filterDlg.open||keysDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
   var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
 function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
@@ -1972,7 +2001,7 @@ function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   .catch(function(){pollT=setTimeout(watchStatus,20000);});}
 /* Single-key shortcuts (N, S, R, ?): only while no window is open and you aren't typing, and never with Ctrl or Alt */
 var SHORTCUTS={n:function(){if(LIVE)openItemForm(null,null);},s:function(){openSettings();},
-  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},j:function(){focusRow(listRows()[0]);},'?':function(){openKeys();}};
+  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},'#':function(){openFilter('#');},'@':function(){openFilter('@');},j:function(){focusRow(listRows()[0]);},'?':function(){openKeys();}};
 /* On an item: ↓/J and ↑/K to the next and previous item (through the columns, then any open bin), ←/→ to the first item
    of the column beside, O (or Enter on its tick box) opens it, A archives it or shows it again, E edits one you added. */
 function listRows(){return [].slice.call(wrap.querySelectorAll('.row[data-id]')).filter(function(r){return r.offsetParent!==null;});}
@@ -1994,7 +2023,7 @@ wrap.addEventListener('keydown',function(ev){
   else return;
   ev.preventDefault();if(go)focusRow(go);});
 document.addEventListener('keydown',function(ev){
-  if(ev.ctrlKey||ev.metaKey||ev.altKey||ev.defaultPrevented||ev.repeat||document.querySelector('dialog[open]'))return;
+  if(ev.ctrlKey||ev.metaKey||ev.altKey||ev.defaultPrevented||ev.repeat||document.querySelector('dialog[open]:not(.closing)'))return;   /* a sheet on its way out doesn't swallow keys */
   var a=document.activeElement||{};
   if(a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable||(a.tagName==='INPUT'&&!/^(checkbox|radio|button|submit)$/.test(a.type)))return;
   var f=SHORTCUTS[ev.key.length===1?ev.key.toLowerCase():''];
@@ -2013,7 +2042,9 @@ var quick=document.getElementById('quick'),qLine=document.getElementById('quick-
   qSkip=[],qSeq=0,qRead=null,Q_EMPTY={chips:[{what:'day',text:'',says:'Today'}]};
 function paintChips(r){qRead=r;qChips.textContent='';(r.chips||[]).forEach(function(c){var s=document.createElement('span');
   s.className='chip';s.dataset.what=c.what;s.textContent=c.says;qChips.appendChild(s);});}
-function openQuick(){if(!LIVE||document.querySelector('dialog[open]'))return;closeMenu(false);
+function openQuick(){var d=document.querySelector('dialog[open]');
+  if(d&&d.classList.contains('closing')){setTimeout(openQuick,230);return;}   /* a sheet on its way out: open as soon as it has gone */
+  if(!LIVE||d)return;closeMenu(false);
   qSkip=[];qLine.value='';paintChips(Q_EMPTY);quick.showModal();qLine.focus();}
 function readQuick(){var n=++qSeq;return api('/api/quick',{text:qLine.value,skip:qSkip}).then(function(r){if(n===qSeq)paintChips(r);return r;})
   .catch(function(){});}
@@ -2063,6 +2094,82 @@ quick.addEventListener('click',function(ev){if(ev.target===quick)quick.close();}
   document.getElementById('update-check').addEventListener('click',function(){msg.textContent='Checking…';
     api('/api/update',{check:true}).then(show).catch(function(e){msg.textContent=e.message;});});
   go.addEventListener('click',function(){closeSheet(settings);updateNow();});})();
+/* Show only one label or class. Click a tag on a card, or press # or @ and type. Esc shows everything again. The
+   filter lives in the page and is put back on every time the list is rebuilt. */
+var FILTER=null,filterDlg=document.getElementById('filter'),fLine=document.getElementById('filter-line'),fSays=document.getElementById('filter-says');
+function rowMatches(row){if(!FILTER)return true;
+  if(FILTER.what==='label'){var l=row.querySelector('.lab');return !!l&&l.dataset.label===FILTER.value;}
+  if(FILTER.what==='class'){var c=row.querySelector('.code');return !!c&&c.dataset.code===FILTER.value;}
+  return row.querySelector('.t').textContent.toLowerCase().indexOf(FILTER.value)>=0;}
+function applyFilter(){var shown=0;
+  wrap.querySelectorAll('.bands .row').forEach(function(r){var ok=rowMatches(r);r.hidden=!ok;if(ok)shown++;});
+  wrap.querySelectorAll('.bands ul').forEach(function(ul){var any=!!ul.querySelector('.row:not([hidden])'),h=ul.previousElementSibling;
+    ul.hidden=!any;if(h&&h.classList.contains('grp'))h.hidden=!any;});
+  var tools=wrap.querySelector('.tools'),chip=document.getElementById('filter-chip');if(chip)chip.remove();
+  if(FILTER&&tools){chip=document.createElement('button');chip.type='button';chip.id='filter-chip';chip.className='filter-chip';
+    chip.title='Show everything again (Esc)';chip.textContent='Only '+FILTER.says+(shown?'':': nothing')+' ✕';
+    chip.addEventListener('click',function(){setFilter(null);});tools.insertBefore(chip,tools.firstChild);}
+  return shown;}
+function setFilter(f){FILTER=f;var n=applyFilter();
+  document.getElementById('announce').textContent=f?('Showing only '+f.says+': '+n+(n===1?' item':' items')):'Showing everything';}
+function readFilter(text){var t=text.trim(),low=t.toLowerCase(),plain=function(s){return s.toLowerCase().replace(/[^a-z0-9]/g,'');};
+  if(!t||t==='#'||t==='@')return null;
+  if(t.charAt(0)==='#'){var want=plain(t),hit=PREFS.labels.filter(function(x){return plain(x.name).indexOf(want)===0||x.id.indexOf(want)===0;});
+    return hit.length?{what:'label',value:hit[0].id,says:hit[0].name}:{what:'text',value:low,says:'“'+t+'”'};}
+  if(t.charAt(0)==='@'){var w=plain(t),codes=[];wrap.querySelectorAll('.code[data-code]').forEach(function(c){if(codes.indexOf(c.dataset.code)<0)codes.push(c.dataset.code);});
+    var got=codes.filter(function(c){return plain(c).indexOf(w)===0||plain(c).replace(/^[a-z]+/,'')===w;});
+    return got.length?{what:'class',value:got[0],says:got[0]}:{what:'text',value:low,says:'“'+t+'”'};}
+  return {what:'text',value:low,says:'“'+t+'”'};}
+function openFilter(start){if(!LIVE||document.querySelector('dialog[open]'))return;closeMenu(false);fLine.value=start||'';fSays.textContent='';
+  filterDlg.showModal();fLine.focus();fLine.setSelectionRange(fLine.value.length,fLine.value.length);}
+fLine.addEventListener('input',function(){setFilter(readFilter(fLine.value));fSays.textContent='';
+  if(FILTER){var s=document.createElement('span');s.className='chip';s.textContent='Only '+FILTER.says;fSays.appendChild(s);}});
+document.getElementById('filter-form').addEventListener('submit',function(ev){ev.preventDefault();filterDlg.close();});
+filterDlg.addEventListener('cancel',function(){setFilter(null);});   /* Esc in the line: show everything */
+filterDlg.addEventListener('click',function(ev){if(ev.target===filterDlg)filterDlg.close();});
+document.addEventListener('keydown',function(ev){   /* Esc on the list, with a filter on: show everything */
+  if(ev.key==='Escape'&&FILTER&&!document.querySelector('dialog[open]')&&!document.querySelector('#app-menu:not([hidden])')){ev.preventDefault();setFilter(null);}});
+wrap.addEventListener('click',function(ev){var lab=ev.target.closest('.row .lab[data-label]'),code=ev.target.closest('.row .code[data-code]');
+  if(!lab&&!code)return;
+  var f=lab?{what:'label',value:lab.dataset.label,says:lab.textContent}:{what:'class',value:code.dataset.code,says:code.dataset.code};
+  setFilter(FILTER&&FILTER.what===f.what&&FILTER.value===f.value?null:f);});
+/* Settings > Labels: rename, recolour, delete, add. An item whose label is deleted keeps everything else. */
+var labelList=document.getElementById('label-list'),labelErr=document.getElementById('label-error'),LABEL_NOTES=DATA.label_notes||{},labelTimer=0;
+function labelSelect(){var sel=itemForm.elements.label,keep=sel.value;sel.textContent='';
+  [{id:'',name:'None'}].concat(PREFS.labels).forEach(function(x){var o=document.createElement('option');o.value=x.id;o.textContent=x.name;sel.appendChild(o);});
+  sel.value=keep;}
+function renderLabels(){labelList.textContent='';PREFS.labels.forEach(function(x){var li=document.createElement('li');li.dataset.id=x.id;
+    li.innerHTML='<input type="color"><input type="text" class="nick" maxlength="24"><button type="button" class="act label-del reset">Delete</button><p class="warn" aria-live="polite"></p>';
+    var c=li.querySelector('[type=color]'),n=li.querySelector('.nick');c.value=x.color;c.setAttribute('aria-label','Colour for '+x.name);
+    n.value=x.name;n.setAttribute('aria-label','Name of the label '+x.name);li.querySelector('.warn').textContent=LABEL_NOTES[x.id]||'';
+    labelList.appendChild(li);});labelSelect();}
+function saveLabels(extra){clearTimeout(labelTimer);
+  return api('/api/prefs',Object.assign({labels:PREFS.labels},extra||{})).then(function(r){PREFS.labels=r.prefs.labels;LABEL_NOTES=r.label_notes||{};
+    labelErr.textContent='';[].forEach.call(labelList.children,function(li,i){var x=PREFS.labels[i];if(!x)return;li.dataset.id=x.id;
+      li.querySelector('.warn').textContent=LABEL_NOTES[x.id]||'';});
+    labelSelect();refreshBoard({});return r;})
+  .catch(function(e){labelErr.textContent=e.message;throw e;});}
+function labelAt(el){var li=el.closest('li');return PREFS.labels.filter(function(x){return x.id===li.dataset.id;})[0];}
+labelList.addEventListener('input',function(ev){var x=labelAt(ev.target);if(!x)return;
+  if(ev.target.type==='color')x.color=ev.target.value;else x.name=ev.target.value;
+  clearTimeout(labelTimer);labelTimer=setTimeout(function(){saveLabels().catch(function(){});},350);});
+labelList.addEventListener('click',function(ev){var b=ev.target.closest('.label-del');if(!b)return;
+  if(!b.dataset.armed){b.dataset.armed='1';b.textContent='Click again to delete';
+    setTimeout(function(){if(b.isConnected){delete b.dataset.armed;b.textContent='Delete';}},4000);return;}
+  var x=labelAt(b),at=PREFS.labels.indexOf(x),before=PREFS.labels.slice();PREFS.labels.splice(at,1);
+  saveLabels().then(function(r){renderLabels();var lost=(r.cleared||{})[x.id]||[],msg=document.getElementById('label-msg'),undo=document.createElement('button');
+    /* said here, in the pane, with its Undo: the message at the bottom of the list sits behind Settings */
+    msg.textContent='Deleted the label “'+x.name+'”'+(lost.length?'. '+lost.length+(lost.length===1?' item':' items')+' lost it, and nothing else. ':'. ');
+    undo.type='button';undo.className='act';undo.textContent='Undo';msg.appendChild(undo);
+    undo.addEventListener('click',function(){PREFS.labels=before;var back={};back[x.id]=lost;
+      saveLabels({relabel:back}).then(function(){renderLabels();msg.textContent='The label “'+x.name+'” is back.';}).catch(function(){});});})
+  .catch(function(){PREFS.labels=before;renderLabels();});});
+document.getElementById('label-form').addEventListener('submit',function(ev){ev.preventDefault();
+  var name=document.getElementById('label-new'),color=document.getElementById('label-new-color'),before=PREFS.labels.slice();
+  if(!name.value.trim()){labelErr.textContent='Give the label a name.';name.focus();return;}
+  PREFS.labels=PREFS.labels.concat([{id:'',name:name.value.trim(),color:color.value}]);
+  saveLabels().then(function(){renderLabels();name.value='';name.focus();}).catch(function(){PREFS.labels=before;});});
+renderLabels();
 var keysDlg=document.getElementById('keys');
 function openKeys(){if(!document.querySelector('dialog[open]'))keysDlg.showModal();}
 document.getElementById('show-keys').addEventListener('click',function(){settings.close();openKeys();});
@@ -2346,8 +2453,8 @@ function lum(h){var c=[1,3,5].map(function(i){var x=parseInt(h.substr(i,2),16)/2
 function ratio(a,b){var x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
 function syncCourseInputs(){
   var bg=hex(getComputedStyle(root).getPropertyValue('--bg')),codes=[];
-  settings.querySelectorAll('.courses li').forEach(function(li){codes.push(li.dataset.code);});
-  settings.querySelectorAll('.courses li').forEach(function(li){
+  settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){codes.push(li.dataset.code);});
+  settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){
     var code=li.dataset.code,c=PREFS.courses[code]||{},col=effective(code),msgs=[];
     li.querySelector('input[type=color]').value=col;
     if(c.color)li.querySelector('.cc').style.setProperty('--cc',c.color);else li.querySelector('.cc').style.removeProperty('--cc');
@@ -2366,7 +2473,7 @@ function updateCourse(code,patch){
   if(Object.keys(c).length)PREFS.courses[code]=c;else delete PREFS.courses[code];
   applyCourses();syncCourseInputs();saveCourse(code);
 }
-settings.querySelectorAll('.courses li').forEach(function(li){
+settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){
   var code=li.dataset.code;
   li.querySelector('input[type=color]').addEventListener('input',function(ev){updateCourse(code,{color:ev.target.value});});
   li.querySelector('.nick').addEventListener('input',function(ev){updateCourse(code,{nick:ev.target.value.trim()});});

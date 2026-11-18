@@ -96,6 +96,18 @@ Everything else is the title. If it reads a word you meant as plain text, press 
 word and it is handed back. **Ctrl+Enter** saves and stays open for the next one; **Esc** closes. You can fill in
 the rest (class, notes) later from the card's Details.
 
+### Labels, and showing only one
+
+Labels are for things that aren't classes: **Life**, **Extracurricular**, **Appointment** and **Work** to begin
+with, and your own. A label is a tag on the card, with a small square of its colour.
+
+- Give one in quick write (`#life`) or in a card's details.
+- **Click a tag** on a card, a label or a class, to show only those. Or press **#** or **@** and type the start of
+  one (`#wo`, `@chem`); the list narrows as you type. **Esc** shows everything again.
+- **Settings › Labels** renames, recolours, deletes and adds. Renaming changes the tag on every card. Deleting a
+  label takes it off its cards and leaves everything else about them; Undo is offered right there. If a colour
+  would blend into the page in some look, Settings says which.
+
 **From anywhere on your PC:** press **Ctrl+Alt+Space**, even with Birdbrain's window closed. A small quick write
 line opens on top of whatever you're doing; type, press Enter, and it's gone again. You can change the shortcut or
 turn it off in Settings › App. If another program already uses it, Settings says so and offers others.
@@ -118,6 +130,7 @@ turn it off in Settings › App. If another program already uses it, Settings sa
 | O | Open the item in Moodle or Outlook |
 | A | Archive it, or show it again |
 | Ctrl+Z | Undo the last change |
+| # or @ | Show only one label or class |
 | ? | Show every key on one screen |
 | Esc | Close a window |
 
@@ -129,6 +142,7 @@ turn it off in Settings › App. If another program already uses it, Settings sa
 - **Scanning**: Scan now; a full rescan of Moodle; your Moodle and Outlook addresses; Gradescope and McGraw Hill
   Connect on or off; sign in again; and "Scan back to", which reads older emails back to a date you pick.
 - **Courses**: a colour and a nickname for each course tag.
+- **Labels**: rename, recolour, delete and add the labels for things that aren't classes.
 - **Keywords**: anything whose title or course contains a keyword goes straight to Archived. Remove the keyword
   and they come back.
 - **App**: sounds, the keys, the quick write shortcut, **Updates**, the settings file and the log, About, and Quit.

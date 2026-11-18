@@ -82,7 +82,7 @@ class Details(PageTest):
         self.assertEqual((saved.kind, saved.detail, saved.label, saved.timed), ("event", "room 204", "extracurricular", True))
 
     def test_double_click_opens_a_cards_details(self):
-        self.row("Dentist").locator(".meta").dblclick(position={"x": 2, "y": 2})
+        self.row("Dentist").locator(".t").dblclick()
         self.sheet.wait_for(state="visible")
         self.assertEqual(self.field("title").input_value(), "Dentist")
         self.assertFalse(self.field("title").is_disabled())

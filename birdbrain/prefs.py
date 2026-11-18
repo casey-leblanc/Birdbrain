@@ -70,6 +70,42 @@ def _clean_labels(given) -> list[dict]:
     return out
 
 
+def _named_labels(given) -> list[dict]:
+    """The labels the page sent, checked: each has a name (no two the same), and an id of its own."""
+    given = [dict(x) for x in given if isinstance(x, dict)] if isinstance(given, list) else []
+    if len(given) > 24:
+        raise ValueError("That's a lot of labels. Twenty-four is the most.")
+    ids = {str(x.get("id") or "") for x in given}
+    names, seen = [], set()
+    for x in given:
+        x["name"] = " ".join(str(x.get("name", "")).split())[:24]
+        if not x["name"]:
+            raise ValueError("Give the label a name.")
+        if x["name"].lower() in names:
+            raise ValueError(f"There's already a label called {x['name']}.")
+        names.append(x["name"].lower())
+        lid = str(x.get("id") or "")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", lid) or lid in seen:   # new, or a clash: make one from the name
+            base = re.sub(r"[^a-z0-9]+", "-", x["name"].lower()).strip("-")[:20] or "label"
+            lid, n = base, 2
+            while lid in seen or lid in ids:
+                lid, n = f"{base}-{n}", n + 1
+        seen.add(lid)
+        x["id"] = lid
+    return _clean_labels(given)
+
+
+def label_notes(p: dict) -> dict[str, str]:
+    """For Settings > Labels: {label id: "Blends into the page in Paper, day."} for colours weak in some look."""
+    notes = {}
+    for x in p["labels"]:
+        weak = theme.hard_to_see(x["color"])
+        if weak:
+            notes[x["id"]] = ("Blends into the page in " + ("; ".join(weak[:3]) + (" and others" if len(weak) > 3 else ""))
+                              + ". It keeps a thin outline there.")
+    return notes
+
+
 def label_names(p: dict) -> dict[str, str]:
     """{"life": "Life", ...} for the labels the student has."""
     return {x["id"]: x["name"] for x in p["labels"]}
@@ -127,6 +163,8 @@ def update(store: Store, patch: dict) -> dict:
         if not (isinstance(patch["glass_accent"], str) and _HEX.match(patch["glass_accent"])):
             raise ValueError("Pick a colour.")
         p["glass_custom"] = {**p["glass_custom"], "accent": patch["glass_accent"].upper()}
+    if "labels" in patch:   # the whole list, in order; a new label comes with no id and is given one from its name
+        p["labels"] = _named_labels(patch["labels"])
     if "mode" in patch:
         if patch["mode"] not in theme.MODES:
             raise ValueError("Unknown mode.")

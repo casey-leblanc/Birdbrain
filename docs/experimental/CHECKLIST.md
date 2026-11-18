@@ -54,7 +54,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 4. Space no longer ticks: X ticks, E opens details, ? shows every key; arrows and J/K across day groups
 - [x] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
 - [x] 6. System-wide hotkey on Windows (Ctrl+Alt+Space), changeable, with a small always-on-top quick write
-- [ ] 7. Labels: four to begin with plus your own, tags on cards, filter by tag, Settings › Labels
+- [x] 7. Labels: four to begin with plus your own, tags on cards, filter by tag, Settings › Labels
 - [ ] 8. Keyboard-only UI test of the whole thing, under a second of the page's own time
 
 ### Decisions
@@ -87,3 +87,10 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   quick write open instead. A shortcut that can't be had never replaces one that works.
 - The build on GitHub checks Windows gives Birdbrain Ctrl+Alt+Space, then presses it and requires quick write to
   open with no error logged. What the small window looks like, and that typing lands in it, needs a person.
+- A label's name is always drawn in the theme's text colour and its colour as a small square with a thin outline,
+  so a tag reads in every look whatever colour is picked. Settings also names the looks a colour blends into
+  (under 2:1 against the page), checked against every Focus theme, day and night, and the Glass panels.
+- Search arrives in project 4. Until then `#` and `@` open a one-line filter; a word without either filters by
+  title. The filter is the page's own and stays on while the list rebuilds.
+- Undo for a deleted label is in the Settings pane itself: the message at the bottom of the list sits behind
+  Settings, where it can't be clicked.

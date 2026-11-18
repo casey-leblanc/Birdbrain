@@ -204,6 +204,21 @@ class Store:
         self._changed()
         return cur.rowcount > 0
 
+    def clear_label(self, label_id: str) -> list[str]:
+        """A label was deleted: the items that had it keep everything else. Returns their ids, for Undo."""
+        with self._lock, self._db:
+            ids = [r[0] for r in self._db.execute("SELECT id FROM items WHERE label=?", (label_id,))]
+            self._db.execute("UPDATE items SET label='' WHERE label=?", (label_id,))
+        if ids:
+            self._changed()
+        return ids
+
+    def set_label(self, item_ids: list[str], label_id: str) -> None:
+        """Put a label (back) on your own items."""
+        with self._lock, self._db:
+            self._db.executemany("UPDATE items SET label=? WHERE id=? AND source='manual'", [(label_id, i) for i in item_ids])
+        self._changed()
+
     def delete(self, item_id: str) -> None:
         with self._lock, self._db:
             self._db.execute("DELETE FROM items WHERE id=?", (item_id,))

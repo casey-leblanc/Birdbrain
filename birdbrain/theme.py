@@ -67,6 +67,18 @@ def ratio(a, b) -> float:
     return (max(x, y) + .05) / (min(x, y) + .05)
 
 
+GLASS_SURFACE = "#222732"   # the Glass layout's panels, near enough: dark glass over every photo
+
+
+def hard_to_see(color: str) -> list[str]:
+    """Where a tag's colour would blend into the page: ["Paper, day", "Glass"]. Under 2:1 against the surface it sits
+    on counts as blending. Tags are drawn with a thin outline as well, so they are never lost; this is for telling
+    the student which looks a colour is weak in."""
+    weak = [f'{t["name"]}, {"day" if mode == "light" else "night"}' for t in THEMES.values()
+            for mode, tokens in t["modes"].items() if ratio(color, tokens["bg"]) < 2]
+    return weak + (["Glass"] if ratio(color, GLASS_SURFACE) < 2 else [])
+
+
 def mix(a, b, t: float) -> tuple[float, float, float]:
     """a moved toward b by t (0..1): the colour of b laid over a at opacity t."""
     a = rgb(a) if isinstance(a, str) else a
