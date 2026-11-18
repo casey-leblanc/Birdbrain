@@ -117,7 +117,10 @@ class Settings:
     mcgraw_course: str = ""                                # the Moodle course page it was clicked on
     mcgraw_sections: list = field(default_factory=list)  # Connect class pages seen (each lists every assignment)
     mcgraw_auto_renew: bool = False                        # re-open mcgraw_launch by itself when Connect signs out
-    notify: bool = True
+    notify: bool = True                                    # notifications on this PC (notices.py)
+    morning_list: str = "07:30"                            # when "Today: ..." comes; "" for never
+    evening_list: str = "19:00"                            # when "Due tonight: ..." comes; "" for never
+    test_reminders: bool = True                            # one before an exam (the day before) or a quiz (3 hours)
     update_check: bool = True                              # look for a new build a few times a day
     quick_hotkey: str = "ctrl+alt+space"                   # quick write from anywhere on the PC; "" turns it off
     # Entries whose title or course contains any of these (case-insensitive) are archived.

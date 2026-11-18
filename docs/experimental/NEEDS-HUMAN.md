@@ -81,3 +81,18 @@ And on a real PC, since only a headless browser has tried it:
 2. Drag something due today onto tomorrow: it should shake, go back, and say why.
 3. On a touch screen, press and hold a card, then drag. A quick swipe should still scroll the list.
 4. Press M on a card, move it with the arrows, press Enter.
+
+## 7. Notifications on a real PC
+
+The rules for what is said and when are tested, and the build machine checks Birdbrain can listen for a click on
+its notification. Nobody has seen one or clicked one.
+
+1. Settings › Notifications › **Show me one**. A notification should appear by the clock within a couple of
+   seconds, titled like "Due tonight", with one line under it.
+2. Close Birdbrain's window, press **Show me one** again first if the notification has gone, and click the
+   notification. Birdbrain's window should come up with that card outlined and focused.
+3. Set "In the evening" to two minutes from now with something due today on your list, and wait: one
+   notification, "Due tonight: …".
+
+Things to note if they happen: no notification at all (Windows Settings › System › Notifications may have
+Birdbrain off, or Do not disturb is on); clicking it does nothing; it opens the window but not on the card.

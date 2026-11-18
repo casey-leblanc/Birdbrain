@@ -109,6 +109,10 @@ jobs:
           if (-not (Select-String -Path $log -Pattern $opened -Quiet)) { Get-Content $log -Tail 20; throw "Ctrl+Alt+Space was pressed but quick write didn't open" }
           "Ctrl+Alt+Space reached Birdbrain and opened quick write."
           "PASS  quick write shortcut: registered with Windows, pressed, and the small window opened" | Add-Content selftest-result.txt
+          # Notifications: the tray icon Windows really gave us must let Birdbrain hear a click on one.
+          $clicks = 'Notifications: a click on one opens the list on its card'
+          if (-not (Select-String -Path $log -SimpleMatch -Pattern $clicks -Quiet)) { Get-Content $log -Tail 20; throw "Birdbrain can't hear clicks on its notifications" }
+          "PASS  notifications: a click on one is heard" | Add-Content selftest-result.txt
           Start-Sleep 5
           if ($first.HasExited) { throw "Birdbrain stopped by itself (exit code $($first.ExitCode))" }
           if (Select-String -Path $log -Pattern 'Traceback|CRITICAL' -Quiet) { throw "Birdbrain logged an error while starting" }

@@ -35,10 +35,12 @@ import buildinfo
 import filters
 import hotkey
 import instance
+import notices
 import power
 import prefs
 import report
 import theme
+import toast
 import updater
 from browser import NeedsLogin, interactive_login, open_context
 from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
@@ -105,7 +107,7 @@ def _trouble(name: str, address: str, e: Exception) -> str:
     """A failed scan in words the student can act on: a site that can't be reached is usually a mistyped address,
     which Settings can change."""
     if _NO_SITE.search(str(e)):
-        return f"Couldn't reach {name} at {urlparse(address).netloc or address}; check the address in Settings › Scanning"
+        return f"Couldn't reach {name} at {urlparse(address).netloc or address}; check the address in Settings › Advanced"
     return f"{name} scan failed (see log)"
 
 
@@ -190,6 +192,8 @@ class App:
         self.shortcut = hotkey.Shortcut(hotkey.Hotkey(self.on_quick), save=self._save_hotkey)
         self.quick_window: appwindow.QuickWindow | None = None
         self.quick_asks = 0   # times the shortcut was pressed with no small window to open: the list page opens quick write
+        self.notices = notices.Notices(self.store, self.settings)   # what to say unasked, and when
+        self.toasts = toast.Toasts(lambda title, text: self.notify(text, title), self.notices, self.on_show)
         self.updater = updater.Updater()
         self.update: updater.Release | None = None   # a newer build, once a check has found one
         self.update_progress: dict | None = None     # while one is being downloaded and installed
@@ -285,6 +289,7 @@ class App:
     def _page_status(self) -> dict:
         return {"version": self.store.version, "status": self.status,
                 "progress": self._progress_view(), "signing_in": self.signing_in.is_set(), "quick": self.quick_asks,
+                "focus": self.toasts.view(),
                 "scanning": self.scanning or self.mail_since is not None,
                 "inbox": self.inbox_scanning or self.mail_since is not None}
 
@@ -325,7 +330,42 @@ class App:
         return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "sites": self.api_sites, "keywords": self.api_keywords,
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
                 "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update,
-                "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide}
+                "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide, "notifications": self.api_notifications}
+
+    # --- notifications on this PC (notices.py says what and when; toast.py shows them) --------
+    def api_notifications(self, body: dict) -> dict:
+        """Settings > Notifications: on or off, the two times, the one before a test; or {"test": true} to see one."""
+        if body.get("test"):
+            sample = self.notices.sample()
+            try:
+                self.icon.notify(sample.text, sample.title)   # shown even while notifications are off: it was asked for
+            except Exception:
+                log.exception("notify failed")
+                return {"ok": False, "error": "Windows wouldn't show a notification. Check they're allowed for Birdbrain in Windows Settings › System › Notifications."}
+            self.toasts.last = sample
+            return {"ok": True, "message": f"Sent: “{sample.line}”. Look by the clock. Clicking it opens Birdbrain."}
+        s = Settings.load()
+        if "on" in body:
+            s.notify = bool(body["on"])
+        if "tests" in body:
+            s.test_reminders = bool(body["tests"])
+        for key, field in (("morning", "morning_list"), ("evening", "evening_list")):
+            if key in body:
+                text = str(body[key] or "").strip()
+                if text and not notices.hhmm(text):
+                    return {"ok": False, "error": "That isn't a time. Use the clock, like 07:30."}
+                setattr(s, field, text[:5])
+        s.save()
+        self.settings = self.notices.settings = s
+        return {"ok": True, "on": s.notify, "morning": s.morning_list, "evening": s.evening_list, "tests": s.test_reminders,
+                "message": "Saved." if s.notify else "Notifications are off. Your list still updates by itself."}
+
+    def _notice_loop(self) -> None:
+        """Every half minute: say what has come due, one notification at a time."""
+        while not self.stop.wait(30):
+            self.notices.settings = self.settings
+            if self.set_up.is_set():
+                self.toasts.tick()
 
     # --- quick write from anywhere: the system-wide shortcut and its small window -----------
     def on_quick(self) -> None:
@@ -358,7 +398,7 @@ class App:
         problem = self.shortcut.start(self.settings.quick_hotkey)
         if problem and self.store.get_meta("hotkey:told") != self.settings.quick_hotkey:
             self.store.set_meta("hotkey:told", self.settings.quick_hotkey)
-            self._notify_soon(f"{problem} Pick another shortcut for quick write in Settings, under App.")
+            self._notify_soon(f"{problem} Pick another shortcut for quick write in Settings, under Keys.")
 
     # --- updates: Birdbrain's own builds on GitHub ---------------------------------------
     def _update_view(self) -> dict:
@@ -632,8 +672,8 @@ class App:
         self.store.set_meta("login_done", "1")
         if missed:
             what = _and(missed)
-            self._set_status(f"Couldn't reach {what}; check the address in Settings › Scanning.")
-            self.notify("If the address is wrong, change it in Settings › Scanning.", f"Couldn't reach {what}")
+            self._set_status(f"Couldn't reach {what}; check the address in Settings › Advanced.")
+            self.notify("If the address is wrong, change it in Settings › Advanced.", f"Couldn't reach {what}")
 
     def _before_first_scan(self) -> str:
         """The start of the status line until the first scan is done (the page keeps its counts hidden until then)."""
@@ -795,7 +835,7 @@ class App:
         waiting = f" Waiting for you to sign in to {_and(self.waiting)}." if self.signing_in.is_set() and self.waiting else ""
         self.status = f"Updated {updated}." + (f" {'; '.join(problems)}." if problems else "") + waiting
         self.problems = problems
-        due_today = self._refresh_view()
+        self._refresh_view()
 
         needs = [p for p in problems if "sign-in" in p]
         if needs and needs != self.last_sign_in_problems and not self.signing_in.is_set():  # tell once, not every scan
@@ -807,12 +847,12 @@ class App:
         # Nor anything already over: a meeting or exam that has happened isn't news (overdue work still is).
         new = [i for i in new if i.kind == "assignment" or i.due >= datetime.now()]
         if new:
-            soon = sorted(new, key=lambda i: i.due)[:3]
-            lines = "\n".join(f"{i.title[:50]} ({i.due:%a %b %d})" for i in soon)
-            self.notify(lines, f"{len(new)} new item{'s' if len(new) > 1 else ''}")
+            self.notices.settings = self.settings
+            if self.store.get_meta("notice:first_scan") == "1":   # the very first scan finds everything: that isn't news
+                self.toasts.tell(self.notices.new_work(new))
             if prefs.load(self.store).get("sound", True):
                 squawk()
-        self._daily_digest(due_today)
+        self.store.set_meta("notice:first_scan", "1")
 
     def _refresh_view(self) -> int:
         """Rewrite the list page and the tray badge; returns the due-today count."""
@@ -820,12 +860,6 @@ class App:
         self.icon.icon = make_icon(due_today)
         self.icon.title = f"Birdbrain: {due_today} due today" + (" (sign-in needed)" if self.problems else "")
         return due_today
-
-    def _daily_digest(self, due_today: int):
-        today = datetime.now().date().isoformat()
-        if self.store.get_meta("digest_day") != today:
-            self.store.set_meta("digest_day", today)
-            self.notify(f"{due_today} item(s) due today. Click the tray icon for the full list.", "Today")
 
     def _set_status(self, s: str):
         self.status = s
@@ -879,6 +913,9 @@ class App:
         self._update_result()
         threading.Thread(target=self._start_hotkey, daemon=True, name="hotkey-start").start()
         threading.Thread(target=self.loop, daemon=True, name="scans").start()
+        threading.Thread(target=self._notice_loop, daemon=True, name="notices").start()
+        if toast.hear_clicks(self.icon, self.toasts.clicked):
+            log.info("Notifications: a click on one opens the list on its card")
         threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
                          daemon=True, name="tray").start()
         if self.server:

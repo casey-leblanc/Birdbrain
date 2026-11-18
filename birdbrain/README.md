@@ -137,7 +137,7 @@ with, and your own. A label is a tag on the card, with a small square of its col
 
 **From anywhere on your PC:** press **Ctrl+Alt+Space**, even with Birdbrain's window closed. A small quick write
 line opens on top of whatever you're doing; type, press Enter, and it's gone again. You can change the shortcut or
-turn it off in Settings › App. If another program already uses it, Settings says so and offers others.
+turn it off in Settings › Keys. If another program already uses it, Settings says so and offers others.
 
 ### Keys
 
@@ -163,23 +163,44 @@ turn it off in Settings › App. If another program already uses it, Settings sa
 | ? | Show every key on one screen |
 | Esc | Close a window |
 
+## Notifications
+
+They are on from the start, with nothing to set up. Each is one short line by the clock, never a pile of them:
+
+- **In the morning** (7:30): `Today: Chem Exp 15 Quiz, Pre-lab`. Nothing due, nothing said.
+- **In the evening** (7:00): `Due tonight: …`, which reaches to mid-morning tomorrow, so a 7 AM deadline is not a
+  surprise.
+- **Before a test**: the day before an exam (`Exam tomorrow at 9:30 AM: Math Exam 2`), and three hours before a
+  quiz closes.
+- **New work** a scan finds, as one line however many there are.
+
+Click a notification and Birdbrain opens on that card. Settings › Notifications changes the two times (clear one
+to skip it), turns the test reminder or everything off, and **Show me one** sends a sample. Birdbrain has to be
+running, and the PC awake, for a notification to appear.
+
 ## Settings
 
+Its sections are listed down the side, in this order:
+
+- **Sign-ins**: sign in to your school sites again; Gradescope and McGraw Hill Connect on or off; Scan now.
 - **Look**: Glass (frosted panels over a photo of the sky) or Focus (a calm page with nothing but your list), a
   theme for each, day or night, or follow Windows. **Motion** is Full, Subtle or Off; until you choose, it follows
   your system's reduce-motion setting. **Custom** lets you use your own photos (Glass) or colours
   (Focus); Birdbrain keeps the words readable on whatever you pick.
-- **Scanning**: Scan now; a full rescan of Moodle; your Moodle and Outlook addresses; Gradescope and McGraw Hill
-  Connect on or off; sign in again; and "Scan back to", which reads older emails back to a date you pick.
-- **Courses**: a colour and a nickname for each course tag.
-- **Labels**: rename, recolour, delete and add the labels for things that aren't classes.
-- **Keywords**: anything whose title or course contains a keyword goes straight to Archived. Remove the keyword
-  and they come back.
-- **App**: sounds, the keys, the quick write shortcut, **Updates**, the settings file and the log, About, and Quit.
+- **Notifications**: see above; and the sounds.
+- **Keys**: every key, and the quick write shortcut that works anywhere on the PC.
+- **Labels**: rename, recolour, delete and add the labels for things that aren't classes; and a colour and a
+  nickname for each class.
+- **Updates**: which build you have, and the Update button.
+- **About**, and Quit.
+- **Advanced**, last and apart: things most students never need, each folded shut until you open it. Your Moodle
+  and Outlook addresses; a full rescan of Moodle; "Scan back to", which reads older emails back to a date you
+  pick; hidden keywords (anything whose title or course contains one goes straight to Archived); the log and the
+  settings file.
 
 ## Updates
 
-Settings › App › Updates says which build you have. **Check for updates** asks GitHub for the newest
+Settings › Updates says which build you have. **Check for updates** asks GitHub for the newest
 experimental build; if there is one, **Update and restart** downloads it, checks it arrived intact, makes sure it
 starts on your PC, and swaps it in. The version you had is kept until the next update, and put back if anything
 goes wrong. Birdbrain also looks a few times a day and tells you once when a build is ready. Your list and your
@@ -228,7 +249,7 @@ it; Birdbrain keeps scanning. Quit stops it.
 - **A card is the wrong kind.** Press E on the card and say what it is.
 - **A card shouldn't be there.** Archive it, or add a keyword for the whole kind of thing.
 - **The window won't open.** Start `Birdbrain.exe` again: it brings the running copy's window forward.
-- The menu's Settings › App has **Open log**, which says what each scan did.
+- Settings › Advanced › Files has **Open log**, which says what each scan did.
 
 ## Credits
 

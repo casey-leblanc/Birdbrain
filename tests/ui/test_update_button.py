@@ -21,7 +21,7 @@ class Updates(PageTest):
 
     def test_check_then_update(self):
         self.page.keyboard.press("s")                      # Settings
-        self.page.get_by_role("tab", name="App").click()
+        self.page.get_by_role("tab", name="Updates").click()
         section = self.page.locator("#updates-sec")
         button = section.locator("#update-go")
         self.assertFalse(button.is_visible())

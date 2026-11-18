@@ -20,7 +20,7 @@ class ShortcutInSettings(PageTest):
         self.shortcut.start("ctrl+alt+space")
         super().setUp()
         self.page.keyboard.press("s")
-        self.page.get_by_role("tab", name="App").click()
+        self.page.get_by_role("tab", name="Keys").click()
         self.msg = self.page.locator("#hotkey-msg")
 
     def hotkey_view(self):

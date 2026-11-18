@@ -47,6 +47,7 @@ class PageTest(unittest.TestCase):
     needs_sign_in: list[str] = []   # sites the page should say need signing in to again
     status = "Updated 10:32 AM."    # what the app says about its last scan
     quick_asks = 0                  # times the system-wide shortcut asked the list page to open quick write
+    focus = {"n": 0, "id": "", "at": 0}   # the card a clicked notification asked the page to go to
 
     @classmethod
     def setUpClass(cls):
@@ -76,7 +77,7 @@ class PageTest(unittest.TestCase):
             render_board=lambda t: report.render_board(board(), self.settings, self.status, datetime.now(), s.version,
                                                        prefs.load(s), sign_in=self.needs_sign_in),
             status=lambda: {"version": s.version, "status": self.status, "scanning": False, "progress": None,
-                             "signing_in": False, "inbox": False, "quick": self.quick_asks},
+                             "signing_in": False, "inbox": False, "quick": self.quick_asks, "focus": self.focus},
             request_mail_scan=lambda d: None, on_change=lambda: None, actions=self.actions(),
             render_quick=lambda t: report.render_quick(t, prefs.load(s)))
         self.server.start()

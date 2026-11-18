@@ -464,7 +464,7 @@ def _bins(b: Board, settings: Settings, now: datetime, courses: dict, opened: di
         rows = "".join(_row(h.item, "date", now, courses, reason=h.reason, labels=labels)
                        for h in sorted(b.archived, key=lambda h: h.item.due))
         out += _bin("archived", "Archived", f"Duplicates, entries matching your hidden keywords ({kws}), and anything "
-                    "you archived. Show any of them on your list again, or change keywords in Settings, under Keywords.",
+                    "you archived. Show any of them on your list again, or change keywords in Settings, under Advanced.",
                     rows, len(b.archived),
                     opened.get("archived", False))
     return f'<div class="bins">{out}</div>' if out else ""
@@ -628,9 +628,10 @@ def _addresses(settings: Settings) -> str:
             '<p class="hint" id="addr-msg" aria-live="polite"></p></form></div>')
 
 
-# Settings is grouped by what you came to do, one tab each.
-SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Courses"), ("labels", "Labels"),
-                 ("keywords", "Keywords"), ("app", "App"))
+# Settings in plain order, one section each. Advanced comes last and apart: everything most students never need,
+# each part of it closed until opened.
+SETTINGS_TABS = (("signins", "Sign-ins"), ("look", "Look"), ("notifications", "Notifications"), ("keys", "Keys"),
+                 ("labels", "Labels"), ("updates", "Updates"), ("about", "About"), ("advanced", "Advanced"))
 
 # Keyboard shortcuts. Each entry: the keys (alternatives, each a combination) and what they do. The first group works
 # whenever no window is open and you aren't typing; the second while an item has focus.
@@ -736,16 +737,41 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
     courses = (f'<ul class="courses">{rows}</ul>' if rows
                else '<p class="hint">Course codes appear here after the next scan.</p>')
     since = (now.date() - timedelta(days=30)).isoformat()
-    live = ("scanning", "keywords", "app")   # these need Birdbrain running, so the read-only copy leaves them out
+    live = ("signins", "notifications", "updates", "advanced")   # these need Birdbrain running; the read-only copy leaves them out
+    first = SETTINGS_TABS[0][0]
     tabs = "".join(
-        f'<button type="button" role="tab" class="tab{" needs-app" if k in live else ""}" id="tab-{k}" aria-controls="pane-{k}" '
-        f'aria-selected="{"true" if k == "look" else "false"}" tabindex="{0 if k == "look" else -1}">{label}</button>'
+        f'<button type="button" role="tab" class="tab{" needs-app" if k in live else ""}{" apart" if k == "advanced" else ""}" '
+        f'id="tab-{k}" aria-controls="pane-{k}" aria-selected="{"true" if k == first else "false"}" '
+        f'tabindex="{0 if k == first else -1}">{label}</button>'
         for k, label in SETTINGS_TABS)
 
     def pane(k: str, body: str) -> str:
         return (f'<section class="pane{" needs-app" if k in live else ""}" id="pane-{k}" role="tabpanel" aria-labelledby="tab-{k}" '
-                f'tabindex="0"{"" if k == "look" else " hidden"}>{body}</section>')
+                f'tabindex="0"{"" if k == first else " hidden"}>{body}</section>')
 
+    def fold(key: str, title: str, hint: str, body: str) -> str:
+        """One part of Advanced: closed until opened, with a line that says what's inside."""
+        return (f'<details class="fold" id="fold-{key}"><summary><span class="fold-t">{e(title)}</span>'
+                f'<span class="fold-h">{e(hint)}</span></summary><div class="fold-body">{body}</div></details>')
+
+    signins = (
+        '<div class="set-sec"><h3>Sign in</h3>'
+        '<p class="hint">Opens one window with Moodle, Outlook and any other sites you use. Sign in to each, and it closes '
+        'by itself. Use it whenever Birdbrain says a site needs signing in to again.</p>'
+        '<div class="btn-row"><button type="button" class="btn" id="sign-in">Sign in to your school sites</button></div></div>'
+        '<div class="set-sec"><h3>Other sites</h3>'
+        '<p class="hint">If your courses use them, Birdbrain can read these too. Turn one on, then sign in above.</p>'
+        f'<label class="check"><input type="checkbox" id="site-gradescope"{" checked" if settings.scan_gradescope else ""}>'
+        '<span>Gradescope</span></label>'
+        f'<label class="check"><input type="checkbox" id="site-mcgraw"{" checked" if settings.scan_mcgraw else ""}>'
+        '<span>McGraw Hill Connect</span></label>'
+        + _mcgraw_options(settings) +
+        '<p class="hint" id="sites-msg" aria-live="polite"></p></div>'
+        '<div class="set-sec"><h3>Scan</h3>'
+        f'<p class="hint">Birdbrain checks your sites every {settings.interval_minutes} minutes by itself. '
+        "Scan now if you're expecting something new.</p>"
+        '<div class="btn-row"><button type="button" class="btn" id="scan-now" aria-keyshortcuts="R" title="Scan now (R)">Scan now</button></div>'
+        '<p class="hint" id="scan-now-msg" aria-live="polite"></p></div>')
     look = (
         f'<div class="set-sec"><h3>Layout</h3><div class="seg layout" role="radiogroup" aria-label="Layout">{layouts}</div>'
         '<p class="hint">Glass sets your list on frosted panels overlooking the open sky. Focus is a calm, roomy page with '
@@ -756,74 +782,80 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         f'{_custom_panel(layout, photo, p)}'
         '<label class="check"><input type="checkbox" id="follow-system">'
         "<span>Follow Windows' light and dark mode</span></label></div>")
-    scanning = (
-        '<div class="set-sec"><h3>Scan</h3>'
-        f'<p class="hint">Birdbrain checks Moodle and Outlook every {settings.interval_minutes} minutes. '
-        "Scan now if you're expecting something new; a full rescan also reads every course page.</p>"
-        '<div class="btn-row"><button type="button" class="btn" id="scan-now" aria-keyshortcuts="R" title="Scan now (R)">Scan now</button>'
-        '<button type="button" class="btn" id="scan-full">Full rescan of Moodle</button></div>'
-        '<p class="hint" id="scan-now-msg" aria-live="polite"></p></div>'
-        + _addresses(settings) +
-        '<div class="set-sec"><h3>Other sites</h3>'
-        '<p class="hint">If your courses use them, Birdbrain can read these too. Turn one on, then sign in to it below.</p>'
-        f'<label class="check"><input type="checkbox" id="site-gradescope"{" checked" if settings.scan_gradescope else ""}>'
-        '<span>Gradescope</span></label>'
-        f'<label class="check"><input type="checkbox" id="site-mcgraw"{" checked" if settings.scan_mcgraw else ""}>'
-        '<span>McGraw Hill Connect</span></label>'
-        + _mcgraw_options(settings) +
-        '<p class="hint" id="sites-msg" aria-live="polite"></p></div>'
-        '<div class="set-sec"><h3>Sign in</h3>'
-        '<p class="hint">Opens a window with Moodle, Outlook and any other sites you use. Sign in to each, and it closes '
-        'by itself. Use it whenever a notification says you need to sign in again.</p>'
-        '<div class="btn-row"><button type="button" class="btn" id="sign-in">Sign in to your school sites</button></div></div>'
-        '<div class="set-sec"><h3>Older emails</h3>'
-        '<p class="hint">Regular scans read your newest emails. To catch older ones, scan the inbox back to a date.</p>'
-        '<div class="scan-row"><label class="field"><span>Scan back to</span>'
-        f'<input type="date" id="scan-since" value="{since}" max="{now.date().isoformat()}"></label>'
-        '<button type="button" class="btn" id="scan-go">Scan inbox</button>'
-        '<button type="button" class="btn" id="scan-stop" hidden>Stop</button></div>'
-        '<p class="hint" id="scan-msg" aria-live="polite"></p></div>')
-    course_pane = ('<div class="set-sec"><p class="hint">Give each course code its own colour and a nickname. '
-                   f'Changes apply right away.</p>{courses}</div>')
+    notifications = (
+        '<div class="set-sec" id="notify-sec"><h3>On this PC</h3>'
+        '<p class="hint">One short line by the clock, never a pile of them. Click it and Birdbrain opens on that card.</p>'
+        f'<label class="check"><input type="checkbox" id="notify-on"{" checked" if settings.notify else ""}>'
+        '<span>Show notifications</span></label>'
+        '<div class="notify-rows" id="notify-rows">'
+        '<label class="field time"><span>In the morning, what’s due today</span>'
+        f'<input type="time" id="notify-morning" value="{e(settings.morning_list)}"></label>'
+        '<label class="field time"><span>In the evening, what’s due tonight</span>'
+        f'<input type="time" id="notify-evening" value="{e(settings.evening_list)}"></label>'
+        f'<label class="check"><input type="checkbox" id="notify-tests"{" checked" if settings.test_reminders else ""}>'
+        '<span>Before a test: the day before an exam, three hours before a quiz closes</span></label></div>'
+        '<p class="hint">Clear a time to skip that one. New work found by a scan is said too, as one line.</p>'
+        '<div class="btn-row"><button type="button" class="btn" id="notify-test">Show me one</button></div>'
+        '<p class="hint" id="notify-msg" aria-live="polite"></p></div>'
+        '<div class="set-sec"><h3>Sounds</h3><div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
+        "<span>A soft call when something new is due, a chirp when you finish today's list</span></label>"
+        '<button type="button" class="act" id="sound-test">Play the call</button></div></div>')
+    keys_pane = _keys() + _hotkey_section(hotkey)
     label_pane = (
-        '<div class="set-sec"><p class="hint">Labels are for things that aren’t classes. Type <kbd>#life</kbd> in quick '
+        '<div class="set-sec"><h3>Your labels</h3><p class="hint">Labels are for things that aren’t classes. Type <kbd>#life</kbd> in quick '
         'write, or pick one in a card’s details. Changes apply right away.</p><ul class="courses labels" id="label-list"></ul>'
         '<form class="kw-add" id="label-form" novalidate><label class="field"><span>New label</span>'
         '<input id="label-new" maxlength="24" autocomplete="off" placeholder="Gym, Family, Club…"></label>'
         '<input type="color" id="label-new-color" value="#7c9a5e" aria-label="The new label’s colour">'
         '<button type="submit" class="btn">Add label</button></form>'
         '<p class="form-error" id="label-error" role="alert"></p>'
-        '<p class="hint kw-msg" id="label-msg" aria-live="polite"></p></div>')
+        '<p class="hint kw-msg" id="label-msg" aria-live="polite"></p></div>'
+        '<div class="set-sec" id="classes-sec"><h3>Your classes</h3><p class="hint">Give each course code its own colour and a '
+        f'nickname. Changes apply right away.</p>{courses}</div>')
+    about = (
+        f'<div class="set-sec" id="about-sec"><h3>About</h3><p class="hint">{e(NOT_LSU)}</p>'
+        f'<p class="hint">{e(STAYS_HERE)} There is no AI in Birdbrain: plain rules read your course pages and emails.</p></div>'
+        '<div class="set-sec needs-app"><h3>Quit</h3>'
+        '<p class="hint">Closing this window keeps Birdbrain scanning in the tray. Quit stops it until you start it again.</p>'
+        '<div class="btn-row"><button type="button" class="btn danger" id="quit-app">Quit Birdbrain</button></div></div>')
     keywords = (
-        '<div class="set-sec"><p class="hint">Entries whose title or course contains one of these words move to Archived, '
+        '<p class="hint">Entries whose title or course contains one of these words move to Archived, '
         'at the bottom of your list. Nothing is deleted; remove a keyword and its entries come back.</p>'
         '<ul class="kw-list" id="kw-list"></ul>'
         '<form class="kw-add" id="kw-form" novalidate><label class="field"><span>Add a keyword</span>'
         '<input id="kw-input" maxlength="80" autocomplete="off"></label>'
         '<button type="submit" class="btn">Hide these entries</button></form>'
-        '<p class="form-error" id="kw-error" role="alert"></p><p class="hint kw-msg" id="kw-msg" aria-live="polite"></p></div>')
-    app = (
-        '<div class="set-sec"><h3>Sounds</h3><div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
-        "<span>A soft call when something new is due, a chirp when you finish today's list</span></label>"
-        '<button type="button" class="act" id="sound-test">Play the call</button></div></div>'
-        + _keys() + _hotkey_section(hotkey) + _updates(update) +
-        '<div class="set-sec"><h3>Files</h3>'
-        '<p class="hint">The settings file holds the scan interval, how far ahead to look and other options.</p>'
-        '<div class="btn-row"><button type="button" class="btn" data-open="settings">Open settings file</button>'
-        '<button type="button" class="btn" data-open="log">Open log</button></div></div>'
-        f'<div class="set-sec" id="about-sec"><h3>About</h3><p class="hint">{e(NOT_LSU)}</p>'
-        f'<p class="hint">{e(STAYS_HERE)} There is no AI in Birdbrain: plain rules read your course pages and emails.</p></div>'
-        '<div class="set-sec"><h3>Quit</h3>'
-        '<p class="hint">Closing this window keeps Birdbrain scanning in the tray. Quit stops it until you start it again.</p>'
-        '<div class="btn-row"><button type="button" class="btn danger" id="quit-app">Quit Birdbrain</button></div></div>')
+        '<p class="form-error" id="kw-error" role="alert"></p><p class="hint kw-msg" id="kw-msg" aria-live="polite"></p>')
+    advanced = (
+        '<div class="set-sec"><p class="hint">Things most students never need. Each part stays closed until you open it.</p>'
+        + fold("addresses", "Site addresses", "Where Moodle and Outlook are", _addresses(settings))
+        + fold("rescan", "Full rescan", "Read every Moodle course page again",
+               '<p class="hint">A normal scan reads your timeline and calendar. A full rescan also opens every course page, '
+               'which takes a few minutes. Birdbrain does one by itself on the first scan.</p>'
+               '<div class="btn-row"><button type="button" class="btn" id="scan-full">Full rescan of Moodle</button></div>'
+               '<p class="hint" id="scan-full-msg" aria-live="polite"></p>')
+        + fold("emails", "Older emails", "Scan your inbox back to a date",
+               '<p class="hint">Regular scans read your newest emails. To catch older ones, scan the inbox back to a date.</p>'
+               '<div class="scan-row"><label class="field"><span>Scan back to</span>'
+               f'<input type="date" id="scan-since" value="{since}" max="{now.date().isoformat()}"></label>'
+               '<button type="button" class="btn" id="scan-go">Scan inbox</button>'
+               '<button type="button" class="btn" id="scan-stop" hidden>Stop</button></div>'
+               '<p class="hint" id="scan-msg" aria-live="polite"></p>')
+        + fold("keywords", "Hidden keywords", "Words that send a card to Archived", keywords)
+        + fold("files", "Files", "The log and the settings file",
+               '<p class="hint">The log says what each scan did. The settings file holds the scan interval, how far ahead '
+               'to look and other options.</p>'
+               '<div class="btn-row"><button type="button" class="btn" data-open="log">Open log</button>'
+               '<button type="button" class="btn" data-open="settings">Open settings file</button></div>')
+        + '</div>')
     return (
         '<dialog id="settings" class="sheet-dialog" aria-labelledby="settings-title"><div class="sheet">'
         '<div class="sheet-head"><h2 id="settings-title">Settings</h2>'
         '<button type="button" class="act" data-close>Close</button></div>'
-        f'<div class="tabs" role="tablist" aria-labelledby="settings-title">{tabs}</div>'
-        + pane("look", look) + pane("scanning", scanning) + pane("courses", course_pane) + pane("labels", label_pane)
-        + pane("keywords", keywords)
-        + pane("app", app) + '</div></dialog>')
+        f'<div class="set-body"><div class="tabs" role="tablist" aria-orientation="vertical" aria-labelledby="settings-title">{tabs}</div>'
+        + pane("signins", signins) + pane("look", look) + pane("notifications", notifications) + pane("keys", keys_pane)
+        + pane("labels", label_pane) + pane("updates", _updates(update)) + pane("about", about) + pane("advanced", advanced)
+        + '</div></div></dialog>')
 
 
 def _item_dialog(b: Board, now: datetime, labels: list | None = None) -> str:
@@ -1393,6 +1425,29 @@ TITLEBAR_CSS = """
 """
 
 TOOLS_CSS = """
+/* Settings: its sections in a list down the side, Advanced last and apart; each part of Advanced folds shut */
+#settings{width:min(820px,calc(100vw - 32px))}
+#settings .set-body{flex:1;min-height:0;display:flex}
+#settings .tabs{flex:none;flex-direction:column;justify-content:flex-start;gap:2px;width:172px;padding:8px 10px 16px 18px;border-bottom:0;overflow:visible auto}
+#settings .tab{margin:0;padding:9px 12px;border:0;border-radius:8px;text-align:left;white-space:nowrap}
+#settings .tab[aria-selected=true]{background:var(--q-chip)}
+#settings .tab.apart{margin-top:14px;position:relative;overflow:visible}
+#settings .tab.apart::before{content:"";position:absolute;left:8px;right:8px;top:-8px;border-top:1px solid var(--q-line)}
+#settings .pane{padding-top:0}
+.notify-rows{display:grid;gap:10px;margin:14px 0 4px}
+.field.time{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;max-width:460px}
+.field.time input{width:auto;flex:none}
+.notify-rows.off{opacity:.5}
+.fold{border-top:1px solid var(--q-line)}.fold:last-of-type{border-bottom:1px solid var(--q-line)}
+.fold summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:14px 4px;cursor:pointer;list-style:none}
+.fold summary::-webkit-details-marker{display:none}
+.fold summary::after{content:"Open";margin-left:auto;font-size:.8125rem;color:var(--q-muted)}
+.fold[open] summary::after{content:"Close"}
+.fold-t{font-weight:600}.fold-h{font-size:.8125rem;color:var(--q-muted)}
+.fold-body{padding:0 4px 20px}.fold-body .set-sec{padding-top:0}.fold-body .set-sec h3{display:none}
+@media(max-width:640px){#settings .set-body{flex-direction:column}
+ #settings .tabs{flex-direction:row;width:auto;padding:0 10px 6px;overflow:auto visible}
+ #settings .tab.apart{margin:0 0 0 14px}#settings .tab.apart::before{left:-8px;right:auto;top:8px;bottom:8px;border-top:0;border-left:1px solid var(--q-line)}}
 /* the top corner: one status dot (its words show only while scanning or when there's something to read) and a menu */
 .tools{position:absolute;top:var(--tools-top);right:var(--tools-right);z-index:6;display:flex;align-items:center;gap:2px;
  max-width:calc(100% - 2 * var(--tools-right))}
@@ -1977,7 +2032,8 @@ var settings=document.getElementById('settings'),itemDlg=document.getElementById
 function openSettings(tab,part){syncCourseInputs();settings.showModal();
   var t=tab&&setTabs.filter(function(x){return x.id==='tab-'+tab;})[0];
   if(t)showTab(t);else t=settings.querySelector('[role=tab][aria-selected=true]');
-  var p=part&&document.getElementById(part);if(p&&!p.closest('[hidden]'))p.scrollIntoView({block:'start'});
+  var p=part&&document.getElementById(part),f=p&&p.closest('details.fold');if(f)f.open=true;
+  if(p&&!p.closest('[hidden]'))p.scrollIntoView({block:'start'});
   if(t)t.focus();}
 /* What Scan now did: started one, or found one already running (it isn't queued behind it), or, while the sign-in
    window is open, read what's signed in so far (or nothing, if nothing is yet). */
@@ -2006,7 +2062,7 @@ function closeMenu(focus){var m=menuParts();if(!m.box||m.box.hidden)return;m.box
 function openMenu(){var m=menuParts();if(!m.box)return;m.box.hidden=false;m.btn.setAttribute('aria-expanded','true');
   m.box.querySelector('[role=menuitem]').focus();}
 var MENU_DO={quick:function(){openQuick();},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
-  update:function(){openSettings('app','updates-sec');document.getElementById('update-check').click();},
+  update:function(){openSettings('updates','updates-sec');document.getElementById('update-check').click();},
   quit:function(){quitNow();}};
 on('click','#open-menu',function(){var m=menuParts();if(m.box.hidden)openMenu();else closeMenu(true);});
 on('click','#app-menu [data-menu]',function(b){
@@ -2023,8 +2079,16 @@ document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.too
 /* double-click a card (not its link, tick box or buttons) for its details */
 wrap.addEventListener('dblclick',function(ev){var li=ev.target.closest('.row[data-id]');
   if(li&&!ev.target.closest('a,button,input,label,summary,.lab,.code'))openDetails(li);});   /* a tag is for filtering */
-var quickAsks=null;
-function paintStatus(s){if(typeof s.quick==='number'){if(quickAsks!==null&&s.quick>quickAsks)openQuick();quickAsks=s.quick;}   /* the shortcut, with no small window to open */
+var quickAsks=null,focusAsks=null;
+/* a notification was clicked: go to the card it was about (in Completed or Archived, that bin opens) */
+function goToCard(id){var row=wrap.querySelector('.row[data-id="'+CSS.escape(id)+'"]');if(!row)return;
+  var bin=row.closest('details.bin');if(bin&&!bin.open)bin.open=true;
+  document.querySelectorAll('dialog[open]').forEach(function(d){d.close();});
+  focusRow(row);row.scrollIntoView({block:'center'});row.classList.add('landed');setTimeout(function(){row.classList.remove('landed');},1800);
+  document.getElementById('announce').textContent=titleOf(row);}
+function paintStatus(s){if(typeof s.quick==='number'){if(quickAsks!==null&&s.quick>quickAsks)openQuick();quickAsks=s.quick;}
+  if(s.focus){var fresh=focusAsks===null?(s.focus.n>0&&Date.now()/1000-s.focus.at<20):s.focus.n>focusAsks;   /* a window opened by the click still goes there */
+    focusAsks=s.focus.n;if(fresh&&s.focus.id)goToCard(s.focus.id);}   /* the shortcut, with no small window to open */
   var st=wrap.querySelector('.status');if(!st)return;
   var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar');
   if(t&&typeof text==='string'&&t.textContent!==text)t.textContent=text;
@@ -2231,13 +2295,14 @@ document.getElementById('show-keys').addEventListener('click',function(){setting
   d.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){closeSheet(d);});});
 });
 
-/* Settings tabs: one pane at a time. Arrow keys, Home and End move along the tabs (the ARIA tabs pattern),
-   and the dialog reopens on the tab you last used. */
+/* Settings sections: one pane at a time. Arrow keys, Home and End move along the list (the ARIA tabs pattern),
+   and the dialog reopens on the section you last used. openSettings(tab, part) also opens the part of Advanced asked for. */
 var setTabs=[].slice.call(settings.querySelectorAll('[role=tab]')).filter(function(t){return getComputedStyle(t).display!=='none';});
 function showTab(t,focus){setTabs.forEach(function(x){var on=x===t;x.setAttribute('aria-selected',on?'true':'false');x.tabIndex=on?0:-1;
   document.getElementById(x.getAttribute('aria-controls')).hidden=!on;});if(focus)t.focus();}
+if(setTabs.length&&setTabs.indexOf(settings.querySelector('[role=tab][aria-selected=true]'))<0)showTab(setTabs[0]);   /* the read-only copy has no Sign-ins */
 setTabs.forEach(function(t,i){t.addEventListener('click',function(){showTab(t);});
-  t.addEventListener('keydown',function(ev){var j={ArrowRight:i+1,ArrowLeft:i-1,Home:0,End:setTabs.length-1}[ev.key];
+  t.addEventListener('keydown',function(ev){var j={ArrowRight:i+1,ArrowDown:i+1,ArrowLeft:i-1,ArrowUp:i-1,Home:0,End:setTabs.length-1}[ev.key];
     if(j===undefined)return;ev.preventDefault();showTab(setTabs[(j+setTabs.length)%setTabs.length],true);});});
 
 /* add / edit your own items (one form; editing just fills it in first) */
@@ -2390,15 +2455,27 @@ var soundOn=document.getElementById('sound-on');soundOn.checked=PREFS.sound!==fa
 soundOn.addEventListener('change',function(){PREFS.sound=soundOn.checked;savePrefs({sound:soundOn.checked});});
 document.getElementById('sound-test').addEventListener('click',function(){api('/api/sound').catch(function(e){toast(e.message);});});
 
+/* Settings > Notifications: every change is saved as it's made; "Show me one" shows one now */
+(function(){var on=document.getElementById('notify-on');if(!on)return;
+  var msg=document.getElementById('notify-msg'),rows=document.getElementById('notify-rows'),
+    f={morning:document.getElementById('notify-morning'),evening:document.getElementById('notify-evening'),tests:document.getElementById('notify-tests')};
+  function paint(){rows.classList.toggle('off',!on.checked);[f.morning,f.evening,f.tests].forEach(function(x){x.disabled=!on.checked;});}
+  function save(){paint();api('/api/notifications',{on:on.checked,morning:f.morning.value,evening:f.evening.value,tests:f.tests.checked})
+    .then(function(r){msg.textContent=r.message;}).catch(function(e){msg.textContent=e.message;});}
+  [on,f.morning,f.evening,f.tests].forEach(function(x){x.addEventListener('change',save);});
+  document.getElementById('notify-test').addEventListener('click',function(){api('/api/notifications',{test:true})
+    .then(function(r){msg.textContent=r.message;}).catch(function(e){msg.textContent=e.message;});});
+  paint();})();
 /* the tray menu's actions: scan, sign in, hidden keywords, files, quit */
 var nowMsg=document.getElementById('scan-now-msg');
 function follow(el){var seen=false,tries=0,iv=setInterval(function(){status().then(function(s){
   if(s.scanning){seen=true;el.textContent=s.progress?s.progress.text:s.status;}
   if((seen&&!s.scanning)||(!seen&&++tries>5)){clearInterval(iv);el.textContent=s.status;}
 }).catch(function(){clearInterval(iv);});},2000);}
-function startScan(full){api('/api/scan',full?{full:true}:{}).then(function(r){
-  nowMsg.textContent=scanWords(r.state,full);if(r.state!=='signing-in')follow(nowMsg);fastUntil=Date.now()+6000;watchStatus();})
-  .catch(function(e){nowMsg.textContent=e.message;});}
+function startScan(full){var msg=full?document.getElementById('scan-full-msg'):nowMsg;   /* said beside the button that was pressed */
+  api('/api/scan',full?{full:true}:{}).then(function(r){
+  msg.textContent=scanWords(r.state,full);if(r.state!=='signing-in')follow(msg);fastUntil=Date.now()+6000;watchStatus();})
+  .catch(function(e){msg.textContent=e.message;});}
 document.getElementById('scan-now').addEventListener('click',function(){startScan(false);});
 document.getElementById('scan-full').addEventListener('click',function(){startScan(true);});
 /* where Moodle and Outlook are: fix a mistyped address or move to another. A new one is signed in to straight away. */

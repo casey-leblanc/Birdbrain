@@ -29,7 +29,7 @@ Windows 10 or 11. Nothing else to install, no account to make, and no key to pas
 3. The window closes by itself and your list fills in. The first scan reads every course page, so give it a few
    minutes.
 
-After that Birdbrain updates itself: Settings › App › Updates.
+After that Birdbrain updates itself: Settings › Updates.
 
 ## Where your data stays
 

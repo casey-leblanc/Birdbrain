@@ -150,3 +150,41 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - The keys sheet is wider (780px) so the two new keys still fit on one screen.
 - The spring is worked out from a damped spring (about 5% past, then settled) and written as CSS `linear()`;
   Safari 16 and anything else without `linear()` gets a `cubic-bezier` with a little overshoot.
+
+## 4. Phone and extras
+
+One test for everything here: does it help a student see what to do and start on it, with no setup?
+
+- [x] 1. Settings in plain order: Sign-ins, Look, Notifications, Keys, Labels, Updates, About; then Advanced, closed
+- [x] 2. Notifications on the PC, on with no setup: one short line; morning, evening, and before a test
+- [ ] 3. Telegram under Advanced, off by default, no AI: one-time code, Done buttons, texting adds an item
+- [ ] 4. Search and commands: Ctrl+K or `/`
+- [ ] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
+- [ ] 6. Repeating personal items from quick write
+- [ ] 7. Each day says its load; a heavy day ahead is called out once
+- [ ] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
+- [ ] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
+- [ ] 10. The states in between, each in one line
+- [ ] 11. Backup: export and import personal items and labels
+- [ ] 12. Access: keyboard, focus, contrast, names, text size
+- [ ] 13. Anything else worth it, one at a time
+
+### Decisions
+
+- Settings lists its sections down the side instead of along the top: eight names don't fit a row, and a list
+  lets Advanced sit last and apart, under a rule. Each part of Advanced is folded shut with one line saying what
+  is inside. Site addresses, Full rescan, Older emails, Hidden keywords and Files moved there; course colours and
+  nicknames moved into Labels ("Your classes"); Sounds moved into Notifications.
+- Notifications: `notices.py` decides what to say and when, and keeps what it has said in the store; `toast.py`
+  shows it, one each half minute at most, so several that come due together (after the PC wakes) never arrive as
+  a batch. The old "N new items" notification with three lines, and the "N item(s) due today" one at the first
+  scan of the day, are gone: the one-line "New: …" and the morning list replace them.
+- The morning list says nothing when nothing is due or overdue. A list missed while the PC was off still comes up
+  to four hours late, then waits for tomorrow.
+- An exam is said 24 hours before it, a quiz three hours before it closes: one reminder per test, said again only
+  if the test moves.
+- Short names lead with the class ("Chem Exp 15 Quiz"), by its nickname if the student gave one.
+- A click on a notification is heard by wrapping the tray icon's own message handler (pystray shows the
+  notification but doesn't report the click). The build machine checks the wrapping took on real Windows; nobody
+  has clicked a real one (NEEDS-HUMAN 7).
+- The very first scan finds everything, so it says nothing as "new".

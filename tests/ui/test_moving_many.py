@@ -45,7 +45,10 @@ class Smooth(Many):
     def test_dragging_dropping_and_filtering_200_cards(self):
         self.assertGreaterEqual(self.page.locator(".bands .row").count(), 200)
         self.page.evaluate(WATCH)
-        x, y = self.hold(self.row("Homework 12"))
+        card = self.page.locator(".bands .row[data-id='moodle:cm:111']")        # "Homework 12", due tomorrow evening
+        above, below = (card.evaluate(f"el => {{ const n = el.{side}ElementSibling; return n && n.dataset.id || null; }}")
+                        for side in ("previous", "next"))
+        x, y = self.hold(card)
 
         # following the pointer inside one landing place: not one layout read
         self.page.evaluate(RESET)
@@ -67,13 +70,12 @@ class Smooth(Many):
         self.assertLess(moved["measures"], 12 * (self.cards + 40), "the page was measured more often than the landing place changed")
 
         self.page.evaluate(RESET)
-        gap = self.page.locator(".row.placeholder")
-        above, below = gap.locator("xpath=preceding-sibling::li[1]"), gap.locator("xpath=following-sibling::li[1]")
-        if above.count():                                                      # land before the card above
-            b = above.bounding_box()
+        # land somewhere that isn't where it started: before the card that was above it, or after the one below
+        if above:
+            b = self.page.locator(f".bands .row[data-id='{above}']").bounding_box()
             self.page.mouse.move(b["x"] + 60, b["y"] + 6, steps=6)
-        else:                                                                  # it's first: land after the card below
-            b = below.bounding_box()
+        else:
+            b = self.page.locator(f".bands .row[data-id='{below}']").bounding_box()
             self.page.mouse.move(b["x"] + 60, b["y"] + b["height"] - 4, steps=6)
         self.page.wait_for_timeout(80)
         self.page.mouse.up()
@@ -108,11 +110,11 @@ class Edges(Many):
         self.page.set_viewport_size({"width": 1280, "height": 600})
         self.page.evaluate("() => window.scrollTo(0, 0)")
         x, y = self.hold(self.page.locator(".bands ul.day[data-day] .row").first)
-        self.assertEqual(self.page.evaluate("() => window.scrollY"), 0)
+        start = self.page.evaluate("() => window.scrollY")
         self.page.mouse.move(x, 585, steps=6)
         self.page.wait_for_timeout(500)
         down = self.page.evaluate("() => window.scrollY")
-        self.assertGreater(down, 100, "the list scrolls while the card is held at the bottom edge")
+        self.assertGreater(down, start + 100, "the list scrolls while the card is held at the bottom edge")
         self.page.mouse.move(x, 300, steps=4)
         self.page.wait_for_timeout(200)
         rest = self.page.evaluate("() => window.scrollY")

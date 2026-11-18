@@ -9,7 +9,7 @@ from page import PageTest
 class About(PageTest):
     def test_about_is_readable_in_settings(self):
         self.page.keyboard.press("s")
-        self.page.get_by_role("tab", name="App").click()
+        self.page.get_by_role("tab", name="About").click()
         about = self.page.locator("#about-sec")
         about.scroll_into_view_if_needed()
         self.assertTrue(about.is_visible())
