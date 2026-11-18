@@ -49,7 +49,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 ## 2. Quick write and labels
 
 - [x] 1. Personal items in the store, with a label; a 1.1.2 database opens and keeps everything
-- [ ] 2. The reader for what a student types (`quickwrite.py`), with a table test of 60+ phrases
+- [x] 2. The reader for what a student types (`quickwrite.py`), with a table test of 60+ phrases
 - [ ] 3. Quick write in the window: Space, chips for what was understood, Enter, Ctrl+Enter, Esc, Backspace
 - [ ] 4. Space no longer ticks: X ticks, E opens details, ? shows every key; arrows and J/K across day groups
 - [ ] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
@@ -61,3 +61,11 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 
 - An item stores its label's id ("life"), not its name, so renaming a label in Settings renames it everywhere.
 - "No time" for your own items stays 11:59 PM in the database, as in 1.1.2, so old items need no conversion.
+- Quick write's reader runs in Python only (`quickwrite.py`); the page asks it as you type. One set of rules, one
+  table test (88 phrases), and nothing to keep in step with a second copy in the page's script.
+- A weekday means the coming one, today included ("wed" typed on a Wednesday is today); "next fri" is the Friday
+  of next week. A bare hour needs "at" ("at 5" is 5 PM, "at 9" is 9 AM); "11:59" is the deadline, 11:59 PM.
+- A type word at the start sets the kind but stays in the title ("Quiz ch 5", "Exam 2"), and the app's own rules
+  have the last word: "midterm review session" is not an exam. `#appointment` makes it an event, so it is never
+  shown as overdue homework.
+- An unknown `#label`, or an `@class` that could be two courses, is left in the title rather than guessed.
