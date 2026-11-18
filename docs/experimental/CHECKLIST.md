@@ -295,16 +295,16 @@ One test for everything here: does it help a student see what to do and start on
 
 ## 5. Mac and test pack
 
-- [ ] 1. One platform module with a Windows half and a Mac half; both halves' pure logic tested on Linux
-- [ ] 2. The window and the menu bar: window, menu bar icon, Dock icon reopens, Cmd for Ctrl, the standard menu
-- [ ] 3. `build.py` makes `Birdbrain.app`, ad-hoc signed, as a `.dmg` and a zip, for Apple silicon and Intel
-- [ ] 4. Mac jobs in the workflow: tests, build, self-test, start, a second copy hands over; files join the pre-release
-- [ ] 5. The self-updater replaces the `.app` and restarts it, proven on GitHub's Mac
-- [ ] 6. Not signed yet, said plainly; what the owner needs to sign both platforms
-- [ ] 7. `TESTING.md`: the one guide for student testers
-- [ ] 8. `CHANGES.md`; release notes link both; the README covers Mac install
-- [ ] 9. A last check of the whole branch
-- [ ] 10. One short message to the owner
+- [x] 1. One platform module with a Windows half and a Mac half; both halves' pure logic tested on Linux
+- [x] 2. The window and the menu bar: window, menu bar icon, Dock icon reopens, Cmd for Ctrl, the standard menu
+- [x] 3. `build.py` makes `Birdbrain.app`, ad-hoc signed, as a `.dmg` and a zip, for Apple silicon and Intel
+- [x] 4. Mac jobs in the workflow: tests, build, self-test, start, a second copy hands over; files join the pre-release
+- [x] 5. The self-updater replaces the `.app` and restarts it, proven on GitHub's Mac
+- [x] 6. Not signed yet, said plainly; what the owner needs to sign both platforms
+- [x] 7. `TESTING.md`: the one guide for student testers
+- [x] 8. `CHANGES.md`; release notes link both; the README covers Mac install
+- [x] 9. A last check of the whole branch
+- [x] 10. One short message to the owner
 
 ### Decisions
 
@@ -323,3 +323,23 @@ One test for everything here: does it help a student see what to do and start on
   other.
 - On a Mac the window is an ordinary Mac window with the system's own title bar, not the one Birdbrain draws for
   itself on Windows.
+- Two Mac builds, each made and tried on its own kind of GitHub Mac (`macos-15` and `macos-15-intel`). The app is
+  built to open on macOS 12 and newer; only 15 has been tried, so the guide asks testers which macOS they have.
+- The last check found that the updater took the first build GitHub lists as the newest, and GitHub lists them by
+  name, not by date. It now looks at every build and takes the one published last. Builds up to
+  `exp-2.0.0-5b55b3e` have the old behaviour; NEEDS-HUMAN.md says what to do with one.
+- The pre-release is made by the Windows job; a last job adds both Macs' files to it once all three have passed, so
+  a Mac never sees a build it has no file for (the updater passes over a build without its system's file).
+
+### Last check (item 9)
+
+- A clean clone of the branch passes the unit tests here; GitHub checks out a clean copy for every job, and on the
+  last commit the page tests, the Windows build and both Mac builds pass, each with self-test ALL PASS, a real
+  start and a real update.
+- Nothing about AI is left: a search of the branch for the old names and for a key field finds only the tests
+  that guard against them and the note about an old key in NEEDS-HUMAN.md. The only token field is Telegram's,
+  under Settings › Advanced, off by default.
+- The LSU sentence is where project 1 put it: both READMEs, Settings › About, the welcome page, and now the
+  testers' guide.
+- NEEDS-HUMAN.md is in order of importance: a real scan, the Mac testers, the motion, then the smaller checks on
+  a real PC, signing, and the old key.

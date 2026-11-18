@@ -82,6 +82,13 @@ GitHub was checked from Linux. The two have not been done together, from the but
    Settings › Updates should name the new build.
 4. If it doesn't come back, open `%LOCALAPPDATA%\Birdbrain-update\update.log` and send its contents.
 
+One thing to know first: builds up to and including `exp-2.0.0-5b55b3e` picked the wrong build as the newest
+(GitHub lists builds by name, not by date, and they took the first). Found in the last check and fixed. If you
+or a tester still has one of those, don't use its Update button: download the newest pre-release from the
+Releases page by hand once. Every build after that updates to the right one.
+
+On a Mac the same button is run 12 of the testers' guide; its log is `~/Library/Caches/Birdbrain-update/update.log`.
+
 ## 5. Notifications on a real PC
 
 The rules for what is said and when are tested, and the build machine checks Birdbrain can listen for a click on

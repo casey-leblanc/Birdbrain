@@ -58,6 +58,9 @@ class Release:
         return f"{self.version} ({commit})" if commit != self.version else self.version
 
 
+PER_PAGE, MAX_PAGES = 100, 5   # how many builds GitHub is asked about at a time, and how many times
+
+
 class UpdateError(Exception):
     """Something the person can act on, in plain words."""
 
@@ -91,22 +94,33 @@ class Updater:
             raise UpdateError("Couldn't reach GitHub. Check this PC is online.") from e
 
     def latest(self) -> Release:
-        """The newest experimental build that has a Windows zip. Normal releases and drafts are passed over."""
-        try:
-            releases = json.loads(self._api("/releases?per_page=30").read())
-        except ValueError as e:
-            raise UpdateError("GitHub's answer couldn't be read. Try again in a while.") from e
-        for data in releases if isinstance(releases, list) else []:
-            tag = data.get("tag_name") or ""
-            zips = [a for a in data.get("assets", []) if a.get("name", "").endswith(system.ASSET)]   # this system's file
-            if not tag.startswith(TAG_PREFIX) or data.get("draft") or not zips:
-                continue
-            a = zips[0]
-            digest = a.get("digest") or ""
-            return Release(tag=tag, version=_version_of(tag), notes=(data.get("body") or "").strip(),
-                           asset_id=a["id"], size=int(a.get("size") or 0),
-                           sha256=digest[7:] if digest.startswith("sha256:") else "")
-        raise UpdateError("There is no experimental build to update to yet. Try again in a few minutes.")
+        """The newest experimental build that has this system's file. Normal releases and drafts are passed over.
+        GitHub doesn't list builds newest first (it goes by the tag's name), so every one is looked at and the one
+        published last is taken."""
+        best, when = None, ""
+        for page in range(1, MAX_PAGES + 1):
+            try:
+                releases = json.loads(self._api(f"/releases?per_page={PER_PAGE}&page={page}").read())
+            except ValueError as e:
+                raise UpdateError("GitHub's answer couldn't be read. Try again in a while.") from e
+            releases = releases if isinstance(releases, list) else []
+            for data in releases:
+                tag = data.get("tag_name") or ""
+                zips = [a for a in data.get("assets", []) if a.get("name", "").endswith(system.ASSET)]   # this system's file
+                if not tag.startswith(TAG_PREFIX) or data.get("draft") or not zips:
+                    continue
+                at = str(data.get("published_at") or data.get("created_at") or "")
+                if best is None or at > when:
+                    best, when = (tag, data, zips[0]), at
+            if len(releases) < PER_PAGE:
+                break
+        if best is None:
+            raise UpdateError("There is no experimental build to update to yet. Try again in a few minutes.")
+        tag, data, a = best
+        digest = a.get("digest") or ""
+        return Release(tag=tag, version=_version_of(tag), notes=(data.get("body") or "").strip(),
+                       asset_id=a["id"], size=int(a.get("size") or 0),
+                       sha256=digest[7:] if digest.startswith("sha256:") else "")
 
     def available(self) -> Release | None:
         """The newest build, if it isn't the one that's running. None when up to date."""

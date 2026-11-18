@@ -82,10 +82,31 @@ class Updates(unittest.TestCase):
         self.assertEqual((rel.tag, rel.version, rel.label, rel.asset_id), (TAG, "9.9.9", "9.9.9 (abc1234)", 8))
         self.assertEqual(rel.notes, "- Quick write\n- Fixes")
         url, headers = gh.calls[0]
-        self.assertEqual(url, "https://api.github.com/repos/casey-leblanc/Birdbrain/releases?per_page=30")
+        self.assertEqual(url, "https://api.github.com/repos/casey-leblanc/Birdbrain/releases?per_page=100&page=1")
         self.assertNotIn("Authorization", headers)
         with self.running(TAG):
             self.assertIsNone(up.available())   # already running it
+
+    def test_newest_means_published_last_whatever_order_github_lists_them_in(self):
+        def build(tag, day, n):
+            return {"tag_name": tag, "prerelease": True, "published_at": f"2026-11-{day:02d}T10:00:00Z",
+                    "assets": [{"id": n, "name": "Birdbrain-9.9.9-windows.zip", "size": 5}]}
+        by_name = FakeGitHub(releases=[build("exp-9.9.9-fffffff", 3, 1), build("exp-9.9.9-ccccccc", 17, 2),
+                                       build("exp-9.9.9-aaaaaaa", 9, 3)])       # as GitHub lists them: by name
+        self.assertEqual(updater.Updater(fetch=by_name).latest().tag, "exp-9.9.9-ccccccc")
+
+    def test_more_builds_than_one_answer_holds_are_all_looked_at(self):
+        old = [{"tag_name": f"exp-9.9.9-f{n:06d}", "prerelease": True, "published_at": f"2026-10-01T00:{n % 60:02d}:00Z",
+                "assets": [{"id": n, "name": "Birdbrain-9.9.9-windows.zip", "size": 5}]} for n in range(100)]
+        new = {"tag_name": "exp-9.9.9-0abc123", "prerelease": True, "published_at": "2026-11-18T13:15:59Z",
+               "assets": [{"id": 500, "name": "Birdbrain-9.9.9-windows.zip", "size": 5}]}
+        calls = []
+
+        def github(url, headers):
+            calls.append(url)
+            return io.BytesIO(json.dumps(old if url.endswith("page=1") else [new] if url.endswith("page=2") else []).encode())
+        self.assertEqual(updater.Updater(fetch=github).latest().tag, "exp-9.9.9-0abc123")
+        self.assertEqual(len(calls), 2)                                         # and it stops at the last page
 
     def test_a_normal_release_is_never_taken_for_an_update(self):
         only_normal = FakeGitHub(releases=[{"tag_name": "v3.0.0", "assets": [{"id": 1, "name": "Birdbrain-3.0.0-windows.zip"}]}])

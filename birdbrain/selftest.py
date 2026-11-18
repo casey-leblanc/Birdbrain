@@ -97,7 +97,7 @@ def run(out: Path) -> int:
             return f"{ctx.browser.version}, 3 columns rendered"
     check("scanner browser (installs itself if missing)", scanner_browser)
 
-    check("app window (WebView2)", lambda: __import__("appwindow").check())
+    check("app window", lambda: __import__("appwindow").check())
 
     def sound():
         import wave
@@ -153,5 +153,5 @@ def run(out: Path) -> int:
 
     srv.stop()
     lines.append("ALL PASS" if ok else "SOME CHECKS FAILED")
-    out.write_text("\n".join(lines), encoding="utf-8")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 0 if ok else 1
