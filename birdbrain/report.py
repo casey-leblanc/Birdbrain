@@ -628,6 +628,32 @@ def _addresses(settings: Settings) -> str:
             '<p class="hint" id="addr-msg" aria-live="polite"></p></form></div>')
 
 
+def _telegram() -> str:
+    """Settings > Advanced > Telegram: four short steps, on the page itself. The script asks the app how far the setup
+    has got when this part is opened, and paints the steps to match (phone.py)."""
+    return (
+        '<div id="tg"><p class="hint">Get Birdbrain’s short notifications on your phone, tap Done there, and text your bot '
+        'to add things (“dentist tue 3pm”). It is a bot of your own on Telegram, which is free. There is no AI in it, and '
+        'it stays off until you finish these steps.</p>'
+        '<p class="hint" id="tg-cant" hidden>This computer has nowhere safe to keep the bot’s token, so Telegram can’t be '
+        'turned on here.</p>'
+        '<ol class="steps" id="tg-steps">'
+        '<li id="tg-1">In Telegram, open a chat with <b>@BotFather</b> and send <kbd>/newbot</kbd>. Give the bot any name.</li>'
+        '<li id="tg-2">Paste the token BotFather gives you.'
+        '<form class="kw-add" id="tg-form" novalidate><label class="field"><span class="sr">The bot’s token</span>'
+        '<input id="tg-token" type="password" autocomplete="off" spellcheck="false" placeholder="1234567890:AAH…"></label>'
+        '<button type="submit" class="btn">Save</button></form>'
+        '<p class="form-error" id="tg-error" role="alert"></p>'
+        '<p class="hint">It is kept by this computer’s own credential store, not in Birdbrain’s settings file.</p></li>'
+        '<li id="tg-3">Open your bot <a id="tg-bot" target="_blank" rel="noopener noreferrer"></a> on your phone and send it '
+        '<kbd id="tg-code"></kbd> The code works once.</li>'
+        '<li id="tg-4">That’s it. <span id="tg-linked">Your phone gets the same short lines as this PC.</span>'
+        '<div class="btn-row"><button type="button" class="btn" id="tg-test">Send a test</button>'
+        '<button type="button" class="btn" id="tg-unlink">Link another phone</button>'
+        '<button type="button" class="btn danger" id="tg-off">Turn off</button></div></li></ol>'
+        '<p class="hint" id="tg-msg" aria-live="polite"></p></div>')
+
+
 # Settings in plain order, one section each. Advanced comes last and apart: everything most students never need,
 # each part of it closed until opened.
 SETTINGS_TABS = (("signins", "Sign-ins"), ("look", "Look"), ("notifications", "Notifications"), ("keys", "Keys"),
@@ -828,6 +854,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<p class="form-error" id="kw-error" role="alert"></p><p class="hint kw-msg" id="kw-msg" aria-live="polite"></p>')
     advanced = (
         '<div class="set-sec"><p class="hint">Things most students never need. Each part stays closed until you open it.</p>'
+        + fold("telegram", "Telegram", "The same notifications on your phone", _telegram())
         + fold("addresses", "Site addresses", "Where Moodle and Outlook are", _addresses(settings))
         + fold("rescan", "Full rescan", "Read every Moodle course page again",
                '<p class="hint">A normal scan reads your timeline and calendar. A full rescan also opens every course page, '
@@ -1438,6 +1465,11 @@ TOOLS_CSS = """
 .field.time{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;max-width:460px}
 .field.time input{width:auto;flex:none}
 .notify-rows.off{opacity:.5}
+.steps{margin:14px 0 6px;padding:0 0 0 1.6em;display:grid;gap:14px}
+.steps[hidden]{display:none}.steps li{padding-left:4px}.steps li.later{opacity:.45}.steps li.later form,.steps li.later .btn-row,.steps li.done form{display:none}
+.steps li.done::marker{content:"✓  "}
+.steps kbd{font:inherit;font-weight:600;padding:1px 6px;border:1px solid var(--q-line);border-radius:4px;white-space:nowrap}
+.steps form{margin:8px 0 2px}.steps a{color:inherit;font-weight:600}
 .fold{border-top:1px solid var(--q-line)}.fold:last-of-type{border-bottom:1px solid var(--q-line)}
 .fold summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:14px 4px;cursor:pointer;list-style:none}
 .fold summary::-webkit-details-marker{display:none}
@@ -2466,6 +2498,35 @@ document.getElementById('sound-test').addEventListener('click',function(){api('/
   document.getElementById('notify-test').addEventListener('click',function(){api('/api/notifications',{test:true})
     .then(function(r){msg.textContent=r.message;}).catch(function(e){msg.textContent=e.message;});});
   paint();})();
+/* Settings > Advanced > Telegram: the steps are painted from where the app says the setup has got to. While the
+   code is waiting to be used, the app is asked every few seconds, so the page moves on by itself when the phone links. */
+(function(){var fold=document.getElementById('fold-telegram');if(!fold)return;
+  var li=[1,2,3,4].map(function(n){return document.getElementById('tg-'+n);}),msg=document.getElementById('tg-msg'),
+    err=document.getElementById('tg-error'),token=document.getElementById('tg-token'),bot=document.getElementById('tg-bot'),
+    code=document.getElementById('tg-code'),off=document.getElementById('tg-off'),poll=0;
+  function paint(v){var at=!v.available?0:!v.has_token?2:!v.linked?3:5;   /* the step that's next */
+    document.getElementById('tg-cant').hidden=v.available;document.getElementById('tg-steps').hidden=!v.available;
+    li.forEach(function(el,i){var n=i+1,st=n<at&&!(n===1&&at===2)?'done':(n===at||(n===1&&at===2))?'now':'later';
+      if(at===5)st='done';el.className=st;});
+    if(at===5)li[3].className='now';
+    bot.textContent=v.bot?'@'+v.bot:'';bot.href=v.bot?'https://t.me/'+encodeURIComponent(v.bot):'#';
+    code.textContent=v.code?'/start '+v.code:'';
+    clearTimeout(poll);if(fold.open&&at===3)poll=setTimeout(function(){ask().catch(function(){});},2500);
+    if(at===5&&paint.was===3)msg.textContent='Linked. Your phone now gets what this PC says.';paint.was=at;return v;}
+  function ask(body){return api('/api/telegram',body||{}).then(paint);}
+  function say(e){msg.textContent=e.message;}
+  fold.addEventListener('toggle',function(){clearTimeout(poll);if(fold.open)ask().catch(say);});
+  document.getElementById('tg-form').addEventListener('submit',function(ev){ev.preventDefault();err.textContent='';msg.textContent='';
+    var t=token.value;token.value='';   /* never left sitting in the page */
+    if(!t.trim()){err.textContent='Paste the token first.';return;}
+    ask({token:t}).then(function(){msg.textContent='Saved. Now step 3, on your phone.';}).catch(function(e){err.textContent=e.message;});});
+  document.getElementById('tg-test').addEventListener('click',function(){ask({test:true}).then(function(v){msg.textContent=v.message;}).catch(say);});
+  document.getElementById('tg-unlink').addEventListener('click',function(){ask({unlink:true}).then(function(){msg.textContent='Unlinked. Send the new code from the phone you want.';}).catch(say);});
+  off.addEventListener('click',function(){if(!off.dataset.armed){off.dataset.armed='1';off.textContent='Click again to turn off';
+      setTimeout(function(){delete off.dataset.armed;off.textContent='Turn off';},4000);return;}
+    delete off.dataset.armed;off.textContent='Turn off';
+    ask({off:true}).then(function(){msg.textContent='Telegram is off, and the bot’s token has been removed from this computer.';}).catch(say);});
+})();
 /* the tray menu's actions: scan, sign in, hidden keywords, files, quit */
 var nowMsg=document.getElementById('scan-now-msg');
 function follow(el){var seen=false,tries=0,iv=setInterval(function(){status().then(function(s){

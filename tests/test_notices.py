@@ -108,12 +108,6 @@ class Lists(unittest.TestCase):
         self.assertEqual(self.n.due(clock(19, 0)), [])
         self.assertEqual(len(self.n.due(clock(21, 15))), 1)
 
-    def test_notifications_off_says_nothing(self):
-        self.add(item("moodle:cm:1", "Exp 15 Quiz", clock(17), course=CHEM, kind="assignment"))
-        self.settings.notify = False
-        self.assertEqual(self.n.due(clock(7, 30)), [])
-        self.assertIsNone(self.n.new_work([item("x", "New thing", clock(17))], clock(8)))
-
 
 class BeforeATest(unittest.TestCase):
     def setUp(self):

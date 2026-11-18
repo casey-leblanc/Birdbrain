@@ -116,6 +116,28 @@ def run(out: Path) -> int:
         return f"{img.size[0]}x{img.size[1]}"
     check("tray icon", icon)
 
+    def credential_store():
+        """Where the Telegram bot's token would be kept: write a throwaway value, read it back, remove it."""
+        import secrets
+        import vault
+        if not vault.available():
+            return "none on this system: Telegram can't be turned on here"
+        value, where = secrets.token_hex(12), "Birdbrain-selftest/"
+        assert vault.put("check", value, where), "couldn't write"
+        assert vault.get("check", where) == value, "read back something else"
+        assert vault.put("check", "", where) and vault.get("check", where) == "", "couldn't remove"
+        return "written, read back and removed"
+    check("credential store (for the Telegram token)", credential_store)
+
+    def phone_is_off():
+        import notices
+        import phone
+        p = phone.Phone(store, s)
+        assert not s.telegram_on and not p.on and p.chat(0) is None, "Telegram should be off until it's set up"
+        said = notices.Notices(store, s).sample(now)
+        return f"Telegram off by default; a notification reads “{said.line}”"
+    check("notifications and phone", phone_is_off)
+
     srv.stop()
     lines.append("ALL PASS" if ok else "SOME CHECKS FAILED")
     out.write_text("\n".join(lines), encoding="utf-8")

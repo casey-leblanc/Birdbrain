@@ -121,6 +121,11 @@ class Settings:
     morning_list: str = "07:30"                            # when "Today: ..." comes; "" for never
     evening_list: str = "19:00"                            # when "Due tonight: ..." comes; "" for never
     test_reminders: bool = True                            # one before an exam (the day before) or a quiz (3 hours)
+    # Your phone (phone.py), off unless turned on under Settings > Advanced. The bot's token is not here: the
+    # system keeps it (vault.py).
+    telegram_on: bool = False
+    telegram_bot: str = ""                                 # the bot's username, once its token has been checked
+    telegram_chat: str = ""                                # the one chat Birdbrain talks to and listens to
     update_check: bool = True                              # look for a new build a few times a day
     quick_hotkey: str = "ctrl+alt+space"                   # quick write from anywhere on the PC; "" turns it off
     # Entries whose title or course contains any of these (case-insensitive) are archived.

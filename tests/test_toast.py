@@ -55,6 +55,13 @@ class OneAtATime(unittest.TestCase):
         self.assertEqual((view["n"], view["id"], self.opened), (1, "moodle:cm:8", [1]))
         self.assertGreater(view["at"], 0)
 
+    def test_turned_off_on_the_pc_nothing_shows_but_the_phone_still_hears(self):
+        phone = []
+        self.t.enabled = lambda: False
+        self.t.also.append(lambda n: phone.append(n.line))
+        self.t.tell(notices.Notice("new", "New", "Chem Lab 8 report (Thu)", ["moodle:cm:8"]))
+        self.assertEqual((self.shown, phone), ([], ["New: Chem Lab 8 report (Thu)"]))
+
     def test_nothing_to_say_shows_nothing(self):
         self.t.tell(None)
         self.assertIsNone(self.t.tick(NOW))

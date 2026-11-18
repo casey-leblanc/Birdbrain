@@ -157,7 +157,7 @@ One test for everything here: does it help a student see what to do and start on
 
 - [x] 1. Settings in plain order: Sign-ins, Look, Notifications, Keys, Labels, Updates, About; then Advanced, closed
 - [x] 2. Notifications on the PC, on with no setup: one short line; morning, evening, and before a test
-- [ ] 3. Telegram under Advanced, off by default, no AI: one-time code, Done buttons, texting adds an item
+- [x] 3. Telegram under Advanced, off by default, no AI: one-time code, Done buttons, texting adds an item
 - [ ] 4. Search and commands: Ctrl+K or `/`
 - [ ] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
 - [ ] 6. Repeating personal items from quick write
@@ -188,3 +188,16 @@ One test for everything here: does it help a student see what to do and start on
   notification but doesn't report the click). The build machine checks the wrapping took on real Windows; nobody
   has clicked a real one (NEEDS-HUMAN 7).
 - The very first scan finds everything, so it says nothing as "new".
+- Telegram: `telegram.py` and `vault.py` are ported from the private fork (neither had anything of the other
+  assistant in it); `phone.py` is written new, since the old one was built around a plan made by AI. What the
+  student texts the bot goes through `quickwrite.read`, the same as the Space bar.
+- The bot's token is not a setting at all: it lives only in Windows Credential Manager (or the Mac keychain, to be
+  tried by the Mac testers). Where there is no such store, Telegram can't be turned on, rather than the token
+  going in a file. The packaged app's self-test writes, reads back and removes a throwaway credential on the
+  build machine's real Windows.
+- The link code is six digits, made when the token is saved, good once, and replaced after five wrong tries.
+- The phone gets every notice even if PC notifications are turned off: turning one off shouldn't silence the other.
+- The Telegram part of Settings asks the app where the setup has got to when it is opened, and every few seconds
+  while a code is waiting, so the page moves to "linked" by itself.
+- A real bot has not been tried here (no Telegram account, and Telegram is out of reach from the build): the
+  stand-in in `tests/test_phone.py` plays Telegram. NEEDS-HUMAN 8 has the steps.

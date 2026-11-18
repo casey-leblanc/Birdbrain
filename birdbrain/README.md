@@ -178,6 +178,21 @@ Click a notification and Birdbrain opens on that card. Settings › Notification
 to skip it), turns the test reminder or everything off, and **Show me one** sends a sample. Birdbrain has to be
 running, and the PC awake, for a notification to appear.
 
+### On your phone too (optional)
+
+Settings › Advanced › Telegram sends the same short lines to your phone, through a Telegram bot of your own. It is
+off until you set it up, which is four steps on that page: make a bot with @BotFather, paste its token, send the
+bot the code Birdbrain shows, done. Then:
+
+- each message has a button per card: tap it and the card is ticked off on your PC;
+- text the bot anything and it is read the way quick write reads it: `dentist tue 3pm #appointment` adds it, and
+  the reply says how it was understood, with Undo;
+- `/list` sends what is due today and tonight; `/scan` scans now.
+
+There is no AI in it. The bot's token is kept by Windows Credential Manager (on a Mac, your keychain), never in
+Birdbrain's settings file, and only the chat you linked is listened to. **Turn off** removes the token. Messages
+go from your PC to Telegram and nowhere else, so the PC has to be on.
+
 ## Settings
 
 Its sections are listed down the side, in this order:
@@ -193,7 +208,7 @@ Its sections are listed down the side, in this order:
   nickname for each class.
 - **Updates**: which build you have, and the Update button.
 - **About**, and Quit.
-- **Advanced**, last and apart: things most students never need, each folded shut until you open it. Your Moodle
+- **Advanced**, last and apart: things most students never need, each folded shut until you open it. Telegram; your Moodle
   and Outlook addresses; a full rescan of Moodle; "Scan back to", which reads older emails back to a date you
   pick; hidden keywords (anything whose title or course contains one goes straight to Archived); the log and the
   settings file.

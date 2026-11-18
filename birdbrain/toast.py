@@ -20,9 +20,11 @@ BALLOON_CLICK = 0x0405   # Windows: NIN_BALLOONUSERCLICK, sent to the tray icon 
 
 
 class Toasts:
-    def __init__(self, show, notices: Notices, open_list):
-        """`show(title, text)` puts a notification on screen; `open_list()` brings Birdbrain's window up."""
-        self.show, self.notices, self.open_list = show, notices, open_list
+    def __init__(self, show, notices: Notices, open_list, enabled=lambda: True):
+        """`show(title, text)` puts a notification on screen, while `enabled()` says they're wanted on this PC;
+        `open_list()` brings Birdbrain's window up. Anything in `also` is handed each notice too (the phone)."""
+        self.show, self.notices, self.open_list, self.enabled = show, notices, open_list, enabled
+        self.also: list = []
         self.waiting: deque[Notice] = deque()
         self.last: Notice | None = None
         self.asks, self.asked_at = 0, 0.0     # clicks so far, and when the last one was: the page moves to that card
@@ -48,12 +50,19 @@ class Toasts:
     def _next(self) -> Notice | None:
         if not self.waiting:
             return None
-        n = self.last = self.waiting.popleft()
-        log.info("Notification: %s (%d card%s)", n.title.split(":")[0], len(n.ids), "" if len(n.ids) == 1 else "s")
-        try:
-            self.show(n.title, n.text)
-        except Exception:
-            log.exception("Couldn't show a notification")
+        n = self.waiting.popleft()
+        log.info("Notice: %s (%d card%s)", n.key.split(":")[0], len(n.ids), "" if len(n.ids) == 1 else "s")
+        if self.enabled():
+            self.last = n
+            try:
+                self.show(n.title, n.text)
+            except Exception:
+                log.exception("Couldn't show a notification")
+        for tell in self.also:
+            try:
+                tell(n)
+            except Exception:
+                log.exception("Couldn't pass a notice on")
         return n
 
     def clicked(self) -> None:

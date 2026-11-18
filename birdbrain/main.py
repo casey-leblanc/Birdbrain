@@ -36,6 +36,7 @@ import filters
 import hotkey
 import instance
 import notices
+import phone
 import power
 import prefs
 import report
@@ -193,7 +194,11 @@ class App:
         self.quick_window: appwindow.QuickWindow | None = None
         self.quick_asks = 0   # times the shortcut was pressed with no small window to open: the list page opens quick write
         self.notices = notices.Notices(self.store, self.settings)   # what to say unasked, and when
-        self.toasts = toast.Toasts(lambda title, text: self.notify(text, title), self.notices, self.on_show)
+        self.toasts = toast.Toasts(lambda title, text: self.notify(text, title), self.notices, self.on_show,
+                                   enabled=lambda: self.settings.notify)
+        self.phone = phone.Phone(self.store, self.settings, add=self._add_from_phone)   # off unless turned on (Advanced)
+        self.phone.actions["scan"] = lambda: self.api_scan({})
+        self.toasts.also.append(self.phone.tell)
         self.updater = updater.Updater()
         self.update: updater.Release | None = None   # a newer build, once a check has found one
         self.update_progress: dict | None = None     # while one is being downloaded and installed
@@ -330,7 +335,48 @@ class App:
         return {"scan": self.api_scan, "scan-stop": self.api_scan_stop, "sign-in": self.api_sign_in, "sites": self.api_sites, "keywords": self.api_keywords,
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
                 "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update,
-                "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide, "notifications": self.api_notifications}
+                "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide, "notifications": self.api_notifications,
+                "telegram": self.api_telegram}
+
+    # --- the phone, through the student's own Telegram bot (phone.py); off unless turned on -----
+    def _add_from_phone(self, text: str) -> dict:
+        if not self.server:
+            raise ValueError("Birdbrain's list isn't running on the PC right now, so that couldn't be added.")
+        return self.server.quick({"text": text, "save": True})
+
+    def api_telegram(self, body: dict) -> dict:
+        """Settings > Advanced > Telegram: the bot's token (step 2), unlink, turn off, send a test, or just how far
+        the setup has got."""
+        self.phone.settings = self.settings
+        if "token" in body:
+            view = self.phone.use_token(str(body["token"]))
+        elif body.get("unlink"):
+            view = self.phone.unlink()
+        elif body.get("off"):
+            view = self.phone.turn_off()
+        elif body.get("test"):
+            if not self.phone.on:
+                raise ValueError("Link your phone first: send the bot the /start code.")
+            if not self.phone.tell(self.notices.sample()):
+                raise ValueError(f"The message didn't go: {self.phone.tg.problem or 'Telegram is out of reach'}.")
+            return {"ok": True, **self.phone.view(), "message": "Sent. Look at Telegram on your phone."}
+        else:
+            view = self.phone.view()
+        return {"ok": True, **view}
+
+    def _chat_loop(self) -> None:
+        """While Telegram is on: one request held open that Telegram answers the moment something comes in."""
+        while not self.stop.is_set():
+            self.phone.settings = self.settings
+            try:
+                changed = self.phone.chat(25)
+            except Exception:
+                log.exception("Reading the phone's chat failed")
+                changed = None
+            if changed is None:
+                self.stop.wait(15)   # off, or Telegram out of reach: look again shortly
+            elif changed:
+                self._refresh_view()
 
     # --- notifications on this PC (notices.py says what and when; toast.py shows them) --------
     def api_notifications(self, body: dict) -> dict:
@@ -356,7 +402,7 @@ class App:
                     return {"ok": False, "error": "That isn't a time. Use the clock, like 07:30."}
                 setattr(s, field, text[:5])
         s.save()
-        self.settings = self.notices.settings = s
+        self.settings = self.notices.settings = self.phone.settings = s
         return {"ok": True, "on": s.notify, "morning": s.morning_list, "evening": s.evening_list, "tests": s.test_reminders,
                 "message": "Saved." if s.notify else "Notifications are off. Your list still updates by itself."}
 
@@ -914,6 +960,7 @@ class App:
         threading.Thread(target=self._start_hotkey, daemon=True, name="hotkey-start").start()
         threading.Thread(target=self.loop, daemon=True, name="scans").start()
         threading.Thread(target=self._notice_loop, daemon=True, name="notices").start()
+        threading.Thread(target=self._chat_loop, daemon=True, name="telegram").start()
         if toast.hear_clicks(self.icon, self.toasts.clicked):
             log.info("Notifications: a click on one opens the list on its card")
         threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},

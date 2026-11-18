@@ -96,3 +96,19 @@ its notification. Nobody has seen one or clicked one.
 
 Things to note if they happen: no notification at all (Windows Settings › System › Notifications may have
 Birdbrain off, or Do not disturb is on); clicking it does nothing; it opens the window but not on the card.
+
+## 8. Telegram with a real bot
+
+Everything Birdbrain does with Telegram is tested against a stand-in. A real bot needs a Telegram account.
+
+1. Settings › Advanced › Telegram. Follow the four steps: @BotFather, /newbot, paste the token, send the bot
+   `/start` and the code. The page should move to step 4 by itself within a few seconds of sending the code.
+2. Press **Send a test**. Your phone should get one line with a button under it.
+3. Tap the button. If it named a real card, that card moves to Completed on the PC within a second or two.
+4. Text the bot `dentist tue 3pm #appointment`. It should answer "Added: Dentist", with the day and time, and the
+   card should be on the PC's list. Tap **Undo**: it goes.
+5. Send `/list`.
+6. Open `%APPDATA%\Birdbrain\config.json`: the token must not be in it. Control Panel › Credential Manager ›
+   Windows Credentials should list `Birdbrain/telegram_token`.
+7. **Turn off** (twice). The credential should be gone from Credential Manager.
+

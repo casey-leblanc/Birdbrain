@@ -11,7 +11,8 @@
 - New work found by a scan, as one line however many there are.
 
 This module only decides what to say and when; it keeps what it has already said in the store, so each thing is said
-once. The app shows it (a notification on the PC, and the same line on the phone when that's linked).
+once. The app shows it: a notification on the PC unless those are turned off (toast.py), and the same line on the
+phone when that's linked (phone.py).
 """
 from __future__ import annotations
 
@@ -178,8 +179,6 @@ class Notices:
     def due(self, now: datetime | None = None) -> list[Notice]:
         """Call every minute or so. What's returned has been marked as said."""
         now = now or datetime.now()
-        if not self.settings.notify:
-            return []
         return self._lists(now) + self._tests(now)
 
     # --- after a scan --------------------------------------------------------------------------------------------
@@ -187,7 +186,7 @@ class Notices:
         """One line for what a scan just found, however many there are."""
         now = now or datetime.now()
         new = sorted(new, key=lambda i: i.due)
-        if not new or not self.settings.notify:
+        if not new:
             return None
         nicks = self._nicks()
         if len(new) == 1:
