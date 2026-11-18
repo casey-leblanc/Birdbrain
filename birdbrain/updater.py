@@ -30,15 +30,16 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import system
 from buildinfo import TAG_PREFIX, current
 
 log = logging.getLogger(__name__)
 
 API = "https://api.github.com"
 REPO = "casey-leblanc/Birdbrain"
-UPDATE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Birdbrain-update"
+UPDATE_DIR = system.update_dir()
 RESULT = UPDATE_DIR / "result.json"   # what the last update did, read (once) by the next start
-EXE = "Birdbrain.exe"
+EXE = system.PROGRAM   # Birdbrain.exe, or Birdbrain.app
 
 
 @dataclass
@@ -97,7 +98,7 @@ class Updater:
             raise UpdateError("GitHub's answer couldn't be read. Try again in a while.") from e
         for data in releases if isinstance(releases, list) else []:
             tag = data.get("tag_name") or ""
-            zips = [a for a in data.get("assets", []) if a.get("name", "").endswith("-windows.zip")]
+            zips = [a for a in data.get("assets", []) if a.get("name", "").endswith(system.ASSET)]   # this system's file
             if not tag.startswith(TAG_PREFIX) or data.get("draft") or not zips:
                 continue
             a = zips[0]
@@ -136,64 +137,62 @@ class Updater:
             raise UpdateError("The download didn't match what GitHub lists for this release. Try again.")
         return path
 
-    def stage(self, zip_path: Path, rel: Release) -> Path:
-        """Unpack the zip and check the new Birdbrain.exe starts here and is the build the release says."""
+    def stage(self, zip_path: Path, rel: Release | None) -> tuple[Path, dict]:
+        """Unpack the zip and check the new Birdbrain starts here and (given a release) is the build it names.
+        Returns the unpacked app and what it says of itself."""
         new = UPDATE_DIR / "new"
         shutil.rmtree(new, ignore_errors=True)
         try:
-            with zipfile.ZipFile(zip_path) as z:
-                z.extractall(new)
-        except (zipfile.BadZipFile, OSError) as e:
+            system.unpack(zip_path, new)
+        except (zipfile.BadZipFile, OSError, subprocess.SubprocessError) as e:
             raise UpdateError("The downloaded update couldn't be unpacked. Try again.") from e
-        app = new / "Birdbrain"
-        if not (app / EXE).exists():
+        app = new / system.UNPACKED
+        program = system.program_in(app)
+        if not program.exists():
             raise UpdateError("The downloaded update isn't a Birdbrain build.")
         out = UPDATE_DIR / "build-info.json"
         out.unlink(missing_ok=True)
         try:
-            subprocess.run([str(app / EXE), "--build-info", str(out)], timeout=120, check=True)
+            subprocess.run([str(program), "--build-info", str(out)], timeout=120, check=True)
             info = json.loads(out.read_text(encoding="utf-8"))
         except (subprocess.SubprocessError, OSError, ValueError) as e:
-            raise UpdateError("The new version didn't start on this PC, so Birdbrain is staying as it is.") from e
-        if info.get("tag") != rel.tag:
+            raise UpdateError("The new version didn't start on this computer, so Birdbrain is staying as it is.") from e
+        if rel is not None and info.get("tag") != rel.tag:
             raise UpdateError("The downloaded build isn't the one the release names. Birdbrain is staying as it is.")
-        return app
+        return app, info
 
     def install(self, new_app: Path, rel: Release, args: list[str]) -> None:
         """Start the script that swaps the new version in once this process has gone. The caller quits right after."""
-        app = Path(sys.executable).resolve().parent
         if not getattr(sys, "frozen", False):
             raise UpdateError("Birdbrain is running from source here. Pull the repository to update it.")
-        if not os.access(app, os.W_OK):
-            raise UpdateError(f"Birdbrain can't write to its own folder ({app}). Move it somewhere you can, such as "
-                              "%LOCALAPPDATA%\\Programs, and update again.")
-        script = UPDATE_DIR / "update.cmd"
-        script.write_text(swap_script(app, new_app, UPDATE_DIR / "previous", os.getpid(), rel.tag, args),
-                          encoding="utf-8", newline="\r\n")
+        app = system.app_root()
+        if why := system.update_blocked(app):
+            raise UpdateError(why)
         RESULT.unlink(missing_ok=True)
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        try:   # outside any job object this process is in, where that's allowed, so it outlives us
-            subprocess.Popen(["cmd.exe", "/c", str(script)], cwd=str(UPDATE_DIR), close_fds=True,
-                             creationflags=flags | 0x01000000)
-        except OSError:
-            subprocess.Popen(["cmd.exe", "/c", str(script)], cwd=str(UPDATE_DIR), close_fds=True, creationflags=flags)
+        script = system.run_swap(UPDATE_DIR, system.swap_script(app, new_app, UPDATE_DIR / "previous", os.getpid(), rel.tag,
+                                                                args, folder=UPDATE_DIR))
         log.info("Update to %s handed to %s", rel.tag, script)
 
 
 def install_from_zip(zip_path: Path, args: list[str]) -> int:
-    """Birdbrain.exe --install-update <zip> [arguments for the new version]: install a build from a zip already on
-    this PC (one downloaded by hand, say), the same way an update goes in: it must be an experimental build that
-    starts here, the version in use is kept in Birdbrain-update\\previous, and the new one is started afterwards.
+    """Birdbrain --install-update <zip> [arguments for the new version]: install a build from a zip already on this
+    computer (one downloaded by hand, say), the same way an update goes in: it must be an experimental build that
+    starts here, the version in use is kept in Birdbrain-update/previous, and the new one is started afterwards.
     Returns 0 once the swap is handed over; the caller exits straight away so it can happen."""
     try:
-        with zipfile.ZipFile(zip_path) as z:
-            tag = json.loads(z.read("Birdbrain/_internal/assets/build.json"))["tag"]
-        if not tag.startswith(TAG_PREFIX):
-            raise UpdateError("That zip isn't an experimental Birdbrain build.")
-        rel = Release(tag=tag, version=_version_of(tag), notes="", asset_id=0, size=0, sha256="")
+        if not zipfile.is_zipfile(zip_path):
+            raise UpdateError("That file isn't a Birdbrain build.")
+        with zipfile.ZipFile(zip_path) as z:   # a Windows build says which it is without being started
+            if "Birdbrain/_internal/assets/build.json" in z.namelist() and \
+                    not json.loads(z.read("Birdbrain/_internal/assets/build.json")).get("tag", "").startswith(TAG_PREFIX):
+                raise UpdateError("That zip isn't an experimental Birdbrain build.")
         up = Updater()
         UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-        up.install(up.stage(zip_path, rel), rel, args)
+        app, info = up.stage(zip_path, None)
+        tag = str(info.get("tag") or "")
+        if not tag.startswith(TAG_PREFIX):
+            raise UpdateError("That zip isn't an experimental Birdbrain build.")
+        up.install(app, Release(tag=tag, version=_version_of(tag), notes="", asset_id=0, size=0, sha256=""), args)
         return 0
     except (UpdateError, OSError, KeyError, ValueError, zipfile.BadZipFile) as e:
         why = str(e) if isinstance(e, UpdateError) else "That file isn't a Birdbrain build."
@@ -202,58 +201,7 @@ def install_from_zip(zip_path: Path, args: list[str]) -> int:
         return 1
 
 
-def swap_script(app: Path, new: Path, backup: Path, pid: int, tag: str, args: list[str], exe: str = EXE,
-                image: str = EXE) -> str:
-    """update.cmd: wait for process `pid` to end (up to two minutes), stop anything still running from the app's
-    folder (a scan's browser, say), keep a copy of the app as it is, copy the new one over it, and start it. If the
-    copy fails, put the old one back and start that. Each step is logged, and result.json says how it went.
-    `image` is the name the waited-for process runs under and `exe` the file to start afterwards (both Birdbrain.exe;
-    the tests use others). The unpacked update (`new`'s folder) is removed at the end."""
-    q = lambda p: str(p).replace("%", "%%")
-    ps = str(app).replace("'", "''")
-    robo = "/R:5 /W:1 /NFL /NDL /NJH /NJS /NP"
-    every = "/IS /IT"   # copy every file, even one whose size and time match what's there (robocopy would skip it)
-    start_args = " ".join(args)
-    return f"""@echo off
-chcp 65001 >nul
-setlocal
-set "LOG=%~dp0update.log"
-set "RESULT=%~dp0result.json"
-set /a N=0
-echo %date% %time% update to {tag}: waiting for Birdbrain to close > "%LOG%"
-:wait
-tasklist /FI "PID eq {pid}" /FI "IMAGENAME eq {image}" /NH 2>nul | find "{pid}" >nul
-if errorlevel 1 goto closed
-set /a N+=1
-if %N% GEQ 120 goto stuck
-ping -n 2 127.0.0.1 >nul
-goto wait
-:stuck
-echo %date% %time% Birdbrain did not close; nothing was changed >> "%LOG%"
-echo {{"ok": false, "tag": "{tag}", "why": "Birdbrain didn't close"}} > "%RESULT%"
-goto :eof
-:closed
-powershell -NoProfile -Command "Get-Process | Where-Object {{ $_.Path -like '{ps}\\*' }} | Stop-Process -Force" >nul 2>&1
-echo %date% %time% keeping a copy of the version in use >> "%LOG%"
-robocopy "{q(app)}" "{q(backup)}" /MIR {every} {robo} >> "%LOG%" 2>&1
-if errorlevel 8 goto failed_before
-echo %date% %time% copying the new version >> "%LOG%"
-robocopy "{q(new)}\\_internal" "{q(app)}\\_internal" /MIR {every} {robo} >> "%LOG%" 2>&1
-if errorlevel 8 goto restore
-robocopy "{q(new)}" "{q(app)}" /E /XD _internal {every} {robo} >> "%LOG%" 2>&1
-if errorlevel 8 goto restore
-echo %date% %time% updated to {tag} >> "%LOG%"
-echo {{"ok": true, "tag": "{tag}"}} > "%RESULT%"
-goto start
-:restore
-echo %date% %time% the copy failed; putting the previous version back >> "%LOG%"
-robocopy "{q(backup)}" "{q(app)}" /MIR {every} {robo} >> "%LOG%" 2>&1
-:failed_before
-echo {{"ok": false, "tag": "{tag}", "why": "the new version couldn't be copied in"}} > "%RESULT%"
-:start
-start "" "{q(app)}\\{exe}" {start_args}
-rmdir /s /q "{q(new.parent)}" >nul 2>&1
-"""
+swap_script = system.swap_script   # the script that does the swap is the system's own (system_win.py, system_mac.py)
 
 
 def last_result() -> dict | None:

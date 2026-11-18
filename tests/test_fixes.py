@@ -21,7 +21,8 @@ class OneCopy(unittest.TestCase):
             def __init__(self):
                 self.CreateMutexW = mock.Mock(side_effect=lambda *a: calls.append(a) or 7)
 
-        with mock.patch.object(instance.sys, "platform", "win32"), \
+        import system_win
+        with mock.patch.object(system_win.sys, "platform", "win32"), \
                 mock.patch.dict("sys.modules", {"ctypes": mock.Mock(WinDLL=lambda *a, **k: Kernel(),
                                                                     get_last_error=lambda: 0),
                                                 "ctypes.wintypes": mock.Mock()}):

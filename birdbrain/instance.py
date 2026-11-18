@@ -8,24 +8,12 @@ from __future__ import annotations
 
 import sys
 
-MUTEX = "Local\\BirdbrainTrayApp"
-_held: dict[str, tuple[int, bool]] = {}   # name -> (handle kept for the life of the process, another copy had it)
+import system
 
 
-def already_running(name: str = MUTEX) -> bool:
-    """True if another copy of Birdbrain holds the lock. However often it's asked, the answer is the first one."""
-    if name not in _held:
-        if sys.platform != "win32":
-            _held[name] = (0, False)
-        else:
-            import ctypes
-            from ctypes import wintypes
-            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
-            kernel.CreateMutexW.restype = wintypes.HANDLE
-            handle = kernel.CreateMutexW(None, False, name)
-            _held[name] = (handle, ctypes.get_last_error() == 183)   # ERROR_ALREADY_EXISTS
-    return _held[name][1]
+def already_running(name: str | None = None) -> bool:
+    """True if another copy of Birdbrain holds the lock (system.py). However often it's asked, the answer is the first one."""
+    return system.another_copy_holds(name) if name else system.another_copy_holds()
 
 
 def start_or_hand_over(argv: list[str], running=already_running, show=lambda: False) -> str:

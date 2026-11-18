@@ -12,11 +12,13 @@ import time
 from collections import deque
 from datetime import datetime
 
+import system
+import system_win
 from notices import Notice, Notices
 
 log = logging.getLogger(__name__)
 
-BALLOON_CLICK = 0x0405   # Windows: NIN_BALLOONUSERCLICK, sent to the tray icon when its notification is clicked
+BALLOON_CLICK = system_win.BALLOON_CLICK
 
 
 class Toasts:
@@ -78,19 +80,6 @@ class Toasts:
 
 
 def hear_clicks(icon, on_click) -> bool:
-    """Have `on_click()` called when a notification from this tray icon is clicked. Windows only: pystray shows the
-    notification but doesn't report the click, so the icon's own message handler is wrapped. Returns whether it
-    could be."""
-    handlers, notify = getattr(icon, "_message_handlers", None), getattr(icon, "_on_notify", None)
-    if not isinstance(handlers, dict) or notify is None:
-        return False
-    for message, handler in list(handlers.items()):
-        if handler == notify:
-            def heard(wparam, lparam, _handler=handler):
-                if lparam & 0xFFFF == BALLOON_CLICK:
-                    threading.Thread(target=on_click, daemon=True, name="notice-click").start()
-                    return 0
-                return _handler(wparam, lparam)
-            handlers[message] = heard
-            return True
-    return False
+    """Have `on_click()` called when a notification from this tray icon is clicked, where the system can tell us
+    (system.py). Returns whether it could be."""
+    return system.hear_clicks(icon, on_click)

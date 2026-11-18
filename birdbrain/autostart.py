@@ -1,8 +1,9 @@
 """Start with the computer, so reminders arrive without opening Birdbrain first.
 
-Notifications only come while Birdbrain is running. On Windows, a packaged copy can ask to be started when you sign
-in: one value under your own account's Run key (HKEY_CURRENT_USER, so no administrator rights, and nothing for other
-users of the PC). It starts with --background: in the tray, window closed.
+Notifications only come while Birdbrain is running. A packaged copy can ask to be started when you sign in. On
+Windows that is one value under your own account's Run key (HKEY_CURRENT_USER, so no administrator rights, and
+nothing for other users of the PC); on a Mac, a LaunchAgent of your own (system.py has both). It starts with
+--background: in the tray or menu bar, window closed.
 
 The welcome page offers it, already ticked; Settings › Notifications turns it on or off afterwards. A copy run from
 source has no program of its own to start, so there the choice isn't offered.
@@ -12,14 +13,15 @@ from __future__ import annotations
 import logging
 import sys
 
+import system
+
 log = logging.getLogger(__name__)
 
-RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NAME = "Birdbrain"
 
 
 def available() -> bool:
-    return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
+    return system.autostart_available()
 
 
 def command(program: str | None = None) -> str:
@@ -27,24 +29,11 @@ def command(program: str | None = None) -> str:
 
 
 def _read(name: str) -> str | None:
-    import winreg
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            return str(winreg.QueryValueEx(key, name)[0])
-    except FileNotFoundError:
-        return None
+    return system.autostart_read(name)
 
 
 def _write(name: str, value: str | None) -> None:
-    import winreg
-    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-        if value is None:
-            try:
-                winreg.DeleteValue(key, name)
-            except FileNotFoundError:
-                pass
-        else:
-            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+    system.autostart_write(name, value)
 
 
 def is_on(name: str = NAME, program: str | None = None) -> bool:

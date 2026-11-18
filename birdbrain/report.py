@@ -41,6 +41,7 @@ import reader
 import repeats
 import schools
 import snooze
+import system
 from store import Item, Store
 
 SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outlook calendar",
@@ -844,7 +845,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         f'<div class="themes" role="radiogroup" aria-label="Theme">{_theme_options(layout, photo, p)}</div>'
         f'{_custom_panel(layout, photo, p)}'
         '<label class="check"><input type="checkbox" id="follow-system">'
-        "<span>Follow Windows' light and dark mode</span></label></div>")
+        "<span>Follow the system's light and dark mode</span></label></div>")
     notifications = (
         '<div class="set-sec" id="notify-sec"><h3>On this PC</h3>'
         '<p class="hint">One short line by the clock, never a pile of them. Click it and Birdbrain opens on that card.</p>'
@@ -860,7 +861,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<p class="hint">Clear a time to skip that one. New work found by a scan is said too, as one line.</p>'
         '<div class="btn-row"><button type="button" class="btn" id="notify-test">Show me one</button></div>'
         '<p class="hint" id="notify-msg" aria-live="polite"></p></div>'
-        '<div class="set-sec" id="autostart-sec" hidden><h3>When Windows starts</h3>'
+        '<div class="set-sec" id="autostart-sec" hidden><h3>When you sign in to your computer</h3>'
         '<label class="check"><input type="checkbox" id="autostart-on"><span>Start Birdbrain too, in the tray</span></label>'
         '<p class="hint">Reminders only come while Birdbrain is running. With this on, you never have to open it first.</p>'
         '<p class="hint" id="autostart-msg" aria-live="polite"></p></div>'
@@ -1136,7 +1137,7 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<label class="check"><input type="checkbox" name="gradescope"><span>Gradescope</span></label>'
         '<label class="check"><input type="checkbox" name="mcgraw"><span>McGraw Hill Connect</span></label>'
         '<p class="hint">Only if your courses use them. You sign in to each in the same window as Moodle.</p></fieldset>',
-        ('<label class="check"><input type="checkbox" name="autostart" checked><span>Start Birdbrain with Windows, so reminders '
+        ('<label class="check"><input type="checkbox" name="autostart" checked><span>Start Birdbrain when I sign in to this computer, so reminders '
          'arrive without opening it</span></label>' if autostart else ""),
         '<p class="form-error" role="alert"></p>',
         '<div class="actions-row"><button class="btn primary" type="submit">Continue</button></div>',
@@ -1152,7 +1153,7 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         f'<div class="themes" data-for="focus" role="radiogroup" aria-label="Focus themes">'
         f'{_theme_options("focus", photo, prefs, "look-focus", with_custom=False)}</div></fieldset>',
         '<label class="check"><input type="checkbox" id="follow-system">'
-        "<span>Follow Windows' light and dark mode</span></label>",
+        "<span>Follow the system's light and dark mode</span></label>",
         '<p class="form-error" role="alert"></p>',
         '<div class="actions-row"><button type="button" class="act" id="look-back">Back</button>'
         '<button type="button" class="act" id="look-skip">Skip for now</button>'
@@ -2741,7 +2742,7 @@ quit.addEventListener('click',function(){
     setTimeout(function(){delete quit.dataset.armed;quit.textContent='Quit Birdbrain';},4000);return;}
   quitNow();});
 function quitNow(){
-  api('/api/quit').then(function(){settings.close();wrap.innerHTML='<p class="gone">Birdbrain has quit. To use it again, start Birdbrain.exe.</p>';})
+  api('/api/quit').then(function(){settings.close();wrap.innerHTML='<p class="gone">Birdbrain has quit. To use it again, start Birdbrain.</p>';})
     .catch(function(e){toast(e.message);});}
 var KW=DATA.keywords||[],kwList=document.getElementById('kw-list'),kwForm=document.getElementById('kw-form'),
     kwInput=document.getElementById('kw-input'),kwError=document.getElementById('kw-error'),kwMsg=document.getElementById('kw-msg');
@@ -2856,6 +2857,31 @@ if(LIVE){
   document.addEventListener('visibilitychange',function(){if(!document.hidden)watchStatus();});
 }
 })();"""
+
+# On a Mac the same pages say Cmd where Windows says Ctrl, the menu bar where Windows has a tray, and leave out what
+# the Mac can't do yet (system.py). The pages are written once, in Windows' words, and put into the Mac's here.
+MAC_WORDS = (("<kbd>Ctrl</kbd>", "<kbd>Cmd</kbd>"), ("Ctrl+", "Cmd+"), ("in the tray", "in the menu bar"),
+             (" Click it and Birdbrain opens on that card.", ""))
+
+
+def for_system(page: str, name: str | None = None) -> str:
+    if (name or system.NAME) != "mac":
+        return page
+    for windows, mac in MAC_WORDS:
+        page = page.replace(windows, mac)
+    return page
+
+
+def _in_this_systems_words(fn):
+    import functools
+
+    @functools.wraps(fn)
+    def said(*args, **kwargs):
+        return for_system(fn(*args, **kwargs))
+    return said
+
+
+render, render_board, render_setup, render_quick = (_in_this_systems_words(f) for f in (render, render_board, render_setup, render_quick))
 
 # every script gets the same motion helpers (CALM, MS, EASE: motion.py)
 JS = JS.replace("/*FEEL*/", feel.JS).replace("/*DRAG*/", dragdrop.JS).replace("/*COMMANDS*/", commands.JS).replace("/*SNOOZE*/", snooze.JS)

@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
+import system
 from config import PROFILE_DIR, STATE_PATH, Settings
 
 log = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ def save_state_quietly(ctx: BrowserContext) -> None:
 on_browser_install: Callable[[], None] | None = None   # set by the app to tell the user
 
 
-def install_browser() -> None:
+def install_browser(what: str = "chromium-headless-shell") -> None:
     """One-time download of the scanner's windowless browser into Playwright's
     shared cache (%LOCALAPPDATA%\\ms-playwright), using the driver bundled with
     Birdbrain. Runs without a console window."""
@@ -92,7 +93,7 @@ def install_browser() -> None:
         with contextlib.suppress(Exception):
             on_browser_install()
     node, cli = compute_driver_executable()
-    done = subprocess.run([node, cli, "install", "chromium-headless-shell"], env=get_driver_env(),
+    done = subprocess.run([node, cli, "install", what], env=get_driver_env(),
                           capture_output=True, text=True, timeout=1800,
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if done.returncode != 0:
@@ -119,7 +120,7 @@ def open_context(settings: Settings):
         if settings.headless:
             browser = _launch_scanner(pw)
         else:                                                    # visible, for debugging
-            browser = pw.chromium.launch(headless=False, channel=settings.browser_channel or None)
+            browser = pw.chromium.launch(headless=False, channel=system.signin_channel(settings.browser_channel))
         ctx = browser.new_context(
             storage_state=str(STATE_PATH) if STATE_PATH.exists() else None,
             user_agent=_desktop_ua(browser.version),
@@ -221,9 +222,16 @@ def interactive_login(settings: Settings,
     want_outlook = settings.scan_outlook_mail or settings.scan_outlook_calendar
     with sync_playwright() as pw:
         kwargs = dict(user_data_dir=str(PROFILE_DIR), headless=False, no_viewport=True)
-        if settings.browser_channel:
-            kwargs["channel"] = settings.browser_channel
-        ctx = pw.chromium.launch_persistent_context(**kwargs)
+        channel = system.signin_channel(settings.browser_channel)   # Edge on Windows; Chrome, Edge or our own Chromium on a Mac
+        if channel:
+            kwargs["channel"] = channel
+        try:
+            ctx = pw.chromium.launch_persistent_context(**kwargs)
+        except Exception as e:
+            if channel or "Executable doesn't exist" not in str(e):
+                raise
+            install_browser("chromium")   # no Chrome or Edge on this computer: fetch the browser Birdbrain can show
+            ctx = pw.chromium.launch_persistent_context(**kwargs)
         if STATE_PATH.exists():  # bring back the scanner's latest session cookies
             with contextlib.suppress(Exception):
                 ctx.add_cookies(json.loads(STATE_PATH.read_text(encoding="utf-8"))["cookies"])

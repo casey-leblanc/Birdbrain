@@ -97,6 +97,7 @@ fLine.addEventListener('input',cmdRead);
 fLine.addEventListener('keydown',function(ev){var k=ev.key;
   if(k==='ArrowDown'||k==='ArrowUp'){ev.preventDefault();if(!cmdShown.length)return;
     cmdAt=k==='ArrowDown'?Math.min(cmdShown.length-1,cmdAt+1):Math.max(-1,cmdAt-1);cmdMark();}});
+window.birdbrainCommand=function(id){if(CMD_DO[id]&&!document.querySelector('dialog[open]'))CMD_DO[id]();};   /* the Mac menu's Settings… */
 document.addEventListener('keydown',function(ev){   /* Ctrl+K (Cmd+K on a Mac) from anywhere on the list */
   if((ev.ctrlKey||ev.metaKey)&&!ev.altKey&&!ev.shiftKey&&(ev.key==='k'||ev.key==='K')){ev.preventDefault();openFilter('');}});
 """

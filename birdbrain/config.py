@@ -9,8 +9,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
+import system
+
 APP_NAME = "Birdbrain"
-DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
+DATA_DIR = system.data_dir()   # %APPDATA%\Birdbrain, or ~/Library/Application Support/Birdbrain
 PROFILE_DIR = DATA_DIR / "browser-profile"   # Edge profile for the sign-in window
 STATE_PATH = DATA_DIR / "session.json"        # cookies handed to the background scanner
 DB_PATH = DATA_DIR / "birdbrain.db"

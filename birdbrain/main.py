@@ -15,8 +15,9 @@ if "--selftest" in sys.argv:   # packaged-build check: use a throwaway data fold
 if getattr(sys, "frozen", False):
     # Packaged app: keep the scanner's browser in Playwright's usual shared folder. Left alone,
     # Playwright would look inside the app folder, where browser.install_browser() doesn't put it.
-    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH",
-                          os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ms-playwright"))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import system as _system
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(_system.browsers_dir()))
 
 import logging
 import re
@@ -43,6 +44,7 @@ import power
 import prefs
 import report
 import states
+import system
 import theme
 import toast
 import trouble
@@ -67,11 +69,9 @@ CHIRP = Path(__file__).parent / "assets" / "sounds" / "chirp.wav"
 def squawk(sound: Path = SQUAWK) -> None:
     """The little squawk for something new that's due, or the chirp when today's list is done (Settings can turn both off)."""
     try:
-        import winsound
-        winsound.PlaySound(str(sound), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+        system.play(sound)
     except Exception:
         log.exception("Couldn't play %s", sound.name)
-SHOW_EVENT = "Local\\BirdbrainShowWindow"   # a second launch sets this to bring the window up
 
 # The browser's errors for an address that leads nowhere: no such site, nothing answering there, or not a site it trusts.
 
@@ -125,15 +125,6 @@ def _trace(path: list) -> list[tuple[float, float]]:
         else:
             pts.append(step)
     return pts
-
-
-def _reveal(path: Path) -> None:
-    """Show a file in its folder, selected."""
-    import subprocess
-    if sys.platform == "win32":
-        subprocess.Popen(["explorer", "/select,", str(path)])
-    elif sys.platform == "darwin":
-        subprocess.Popen(["open", "-R", str(path)])
 
 
 def make_icon(badge: int | None = None, size: int = 64) -> Image.Image:
@@ -347,12 +338,12 @@ class App:
             log.info("Start with Windows: %s", "on" if body["on"] else "off")
         v = autostart.view()
         return {"ok": True, **v, "message": "" if "on" not in body else
-                "Birdbrain will start in the tray when you sign in to Windows." if v["on"] else
+                f"Birdbrain will start in the {system.TRAY} when you sign in to this computer." if v["on"] else
                 "Birdbrain won't start by itself. Reminders come only while it is running."}
 
     def api_backup(self, body: dict) -> dict:
         """Settings > Advanced > Backup (backup.py): export what is the student's own to a file, or import one."""
-        out = backup.action(self.store, body, reveal=_reveal)
+        out = backup.action(self.store, body, reveal=system.reveal)
         if "import" in body:
             self._refresh_view()
         return out
@@ -360,7 +351,7 @@ class App:
     def api_problem(self, body: dict) -> dict:
         """Report a problem (trouble.py): what would go in the zip, or the zip itself, saved and shown in its folder.
         Nothing is sent anywhere."""
-        return trouble.action(self.store, body, self.status, reveal=_reveal)
+        return trouble.action(self.store, body, self.status, reveal=system.reveal)
 
     # --- the phone, through the student's own Telegram bot (phone.py); off unless turned on -----
     def _add_from_phone(self, text: str) -> dict:
@@ -408,12 +399,13 @@ class App:
         if body.get("test"):
             sample = self.notices.sample()
             try:
-                self.icon.notify(sample.text, sample.title)   # shown even while notifications are off: it was asked for
+                system.notify(self.icon, sample.title, sample.text)   # shown even while notifications are off: it was asked for
             except Exception:
                 log.exception("notify failed")
-                return {"ok": False, "error": "Windows wouldn't show a notification. Check they're allowed for Birdbrain in Windows Settings › System › Notifications."}
+                return {"ok": False, "error": "The notification couldn't be shown. Check that notifications are allowed for Birdbrain in your system's settings."}
             self.toasts.last = sample
-            return {"ok": True, "message": f"Sent: “{sample.line}”. Look by the clock. Clicking it opens Birdbrain."}
+            return {"ok": True, "message": f"Sent: “{sample.line}”. Look by the clock."
+                    + (" Clicking it opens Birdbrain." if system.NOTIFY_CLICKS else "")}
         s = Settings.load()
         if "on" in body:
             s.notify = bool(body["on"])
@@ -442,7 +434,7 @@ class App:
         """The shortcut was pressed. The small always-on-top window opens; where Birdbrain has no window of its own,
         the list comes up with quick write open instead."""
         log.info("Quick write opened by its shortcut")
-        if self.window and self.server:
+        if self.window and self.server and appwindow.QUICK_WINDOW:
             try:
                 if self.quick_window is None:
                     self.quick_window = appwindow.QuickWindow(self.server.url.replace("/?token=", "/quick?token="))
@@ -465,6 +457,8 @@ class App:
 
     def _start_hotkey(self) -> None:
         """Put the saved shortcut in force. If another program has it, say so once; Settings offers others."""
+        if not hotkey.available():   # this system has no such shortcut yet: nothing to start, and nothing to complain of
+            return
         problem = self.shortcut.start(self.settings.quick_hotkey)
         if problem and self.store.get_meta("hotkey:told") != self.settings.quick_hotkey:
             self.store.set_meta("hotkey:told", self.settings.quick_hotkey)
@@ -525,7 +519,7 @@ class App:
             what = f"Birdbrain {rel.label}"
             zip_path = self.updater.download(rel, lambda part: step(f"Downloading {what}", round(part, 3)))
             step(f"Checking {what} runs on this PC")
-            new_app = self.updater.stage(zip_path, rel)
+            new_app, _ = self.updater.stage(zip_path, rel)
             step(f"Installing {what} once the scan running now ends" if self.scanning else f"Installing {what}")
             with self.lock:   # no scan is using the browser, and none starts
                 step(f"Installing {what}: Birdbrain is restarting")
@@ -704,7 +698,7 @@ class App:
         path = {"settings": CONFIG_PATH, "log": LOG_PATH}.get(body.get("what"))
         if not path:
             raise ValueError("Nothing to open.")
-        os.startfile(path)
+        system.open_file(path)
         return {"ok": True}
 
     def api_quit(self, body: dict) -> dict:
@@ -794,7 +788,7 @@ class App:
     def notify(self, msg: str, title: str = "Birdbrain"):
         if self.settings.notify:
             try:
-                self.icon.notify(msg, title)
+                system.notify(self.icon, title, msg)
             except Exception:
                 log.exception("notify failed")
 
@@ -841,7 +835,7 @@ class App:
         self.stop_mail.clear()
         self._refresh_view()
         if problem and "sign-in" in problem:
-            self.notify("Choose 'Sign in to your school sites…' from the tray menu.", problem)
+            self.notify(f"Choose 'Sign in to your school sites…' from Birdbrain's menu in the {system.TRAY}.", problem)
 
     def scan(self, only: tuple[str, ...] | None = None) -> None:
         """Read every site the student uses, or just `only` these (the ones already signed in, while the sign-in window
@@ -896,7 +890,7 @@ class App:
 
         needs = [p for p in problems if "sign-in" in p]
         if needs and needs != self.last_sign_in_problems and not self.signing_in.is_set():  # tell once, not every scan
-            self.notify("Choose 'Sign in to your school sites…' from the tray menu.", "; ".join(needs))
+            self.notify(f"Choose 'Sign in to your school sites…' from Birdbrain's menu in the {system.TRAY}.", "; ".join(needs))
         self.last_sign_in_problems = needs
         # Don't announce duplicates or keyword-hidden entries.
         new, _ = filters.split(new, self.settings.hidden_keywords,
@@ -914,13 +908,13 @@ class App:
     def _refresh_view(self) -> int:
         """Rewrite the list page and the tray badge; returns the due-today count."""
         _, due_today = write_report(self.store, self.settings, self.status)
-        self.icon.icon = make_icon(due_today)
-        self.icon.title = f"Birdbrain: {due_today} due today" + (" (sign-in needed)" if self.problems else "")
+        title = f"Birdbrain: {due_today} due today" + (" (sign-in needed)" if self.problems else "")
+        system.on_main(lambda: (setattr(self.icon, "icon", make_icon(due_today)), setattr(self.icon, "title", title)))
         return due_today
 
     def _set_status(self, s: str):
         self.status = s
-        self.icon.title = f"Birdbrain: {s}"[:127]
+        system.on_main(lambda: setattr(self.icon, "title", f"Birdbrain: {s}"[:127]))
 
     def loop(self):
         if not self.set_up.is_set():
@@ -976,13 +970,20 @@ class App:
         threading.Thread(target=self._chat_loop, daemon=True, name="telegram").start()
         if toast.hear_clicks(self.icon, self.toasts.clicked):
             log.info("Notifications: a click on one opens the list on its card")
-        threading.Thread(target=self.icon.run, kwargs={"setup": lambda icon: setattr(icon, "visible", True)},
-                         daemon=True, name="tray").start()
+        visible = lambda icon: setattr(icon, "visible", True)
+        if system.NAME == "mac":   # the menu bar icon shares the main thread's loop with the window, which runs it
+            self.icon.run_detached(setup=visible)
+            log.info("Mac: the menu bar icon is up")
+        else:
+            threading.Thread(target=self.icon.run, kwargs={"setup": visible}, daemon=True, name="tray").start()
         if self.server:
             self.window_coming.set()
         if self.server and appwindow.available():
             try:
                 self.window = appwindow.AppWindow(self.server.url, icon_path=_window_icon())
+                if system.NAME == "mac":   # the standard menu's Settings… and Quit
+                    self.window.on_settings = lambda: self.window.command("settings")
+                    self.window.on_quit = self.on_quit
                 self.window_coming.clear()
                 self.window.run(show=show)   # returns once Birdbrain quits
             except Exception:
@@ -992,32 +993,23 @@ class App:
                 return
             self.window = None
         elif self.server:
-            self._notify_soon(appwindow.problem)
+            self._notify_soon(appwindow.why_not())
         self.window_coming.clear()
         if show:
             self.on_show()
+        if system.NAME == "mac" and not self.stop.is_set():   # no window of its own: the menu bar icon still needs the main thread
+            self.icon.run()
+            return
         self.stop.wait()
 
     def _listen_for_show(self) -> None:
-        """Starting Birdbrain while it's already running (a pinned taskbar icon, say) brings the window up."""
-        import ctypes
-        from ctypes import wintypes
-        k = ctypes.WinDLL("kernel32")
-        k.CreateEventW.restype = wintypes.HANDLE
-        k.CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
-        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        handle = k.CreateEventW(None, False, False, SHOW_EVENT)
-
-        def wait():
-            while handle and not self.stop.is_set():
-                if k.WaitForSingleObject(handle, 1000) == 0:   # WAIT_OBJECT_0: signalled
-                    self.on_show()
-        threading.Thread(target=wait, daemon=True, name="show-signal").start()
+        """Starting Birdbrain while it's already running (a pinned icon, say) brings the window up."""
+        system.listen_for_show(self.on_show, self.stop)
 
 
 def _window_icon() -> str | None:
     """The packaged app's window takes Birdbrain.exe's icon; from source, give it the same one."""
-    if getattr(sys, "frozen", False):
+    if getattr(sys, "frozen", False) or system.NAME != "windows":
         return None
     path = DATA_DIR / "birdbrain-bird.ico"
     if not path.exists():
@@ -1029,24 +1021,6 @@ def save_icon(path: Path, sizes: tuple[int, ...]) -> None:
     """A Windows icon file with each size drawn at that size (so the small ones get their own detail rules)."""
     images = [make_icon(size=n) for n in sorted(sizes, reverse=True)]
     images[0].save(path, format="ICO", sizes=[(n, n) for n in sizes], append_images=images[1:])
-
-
-def show_running_copy() -> bool:
-    """Ask the Birdbrain that's already running to show its window. False if it can't be reached."""
-    import ctypes
-    from ctypes import wintypes
-    k = ctypes.WinDLL("kernel32")
-    k.OpenEventW.restype = wintypes.HANDLE
-    k.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
-    k.SetEvent.argtypes = [wintypes.HANDLE]
-    k.CloseHandle.argtypes = [wintypes.HANDLE]
-    ctypes.windll.user32.AllowSetForegroundWindow(-1)   # ASFW_ANY: let its window come to the front
-    handle = k.OpenEventW(0x0002, False, SHOW_EVENT)      # EVENT_MODIFY_STATE
-    if not handle:
-        return False
-    k.SetEvent(handle)
-    k.CloseHandle(handle)
-    return True
 
 
 def first_run_setup() -> None:
@@ -1087,13 +1061,20 @@ if __name__ == "__main__":
         import json
         Path(sys.argv[sys.argv.index("--build-info") + 1]).write_text(json.dumps(buildinfo.current()), encoding="utf-8")
         sys.exit(0)
-    todo = instance.start_or_hand_over(sys.argv, show=show_running_copy)
+    todo = instance.start_or_hand_over(sys.argv, show=system.show_running_copy)
     if todo != "start":
         if todo == "tell":   # another copy is running but couldn't be asked to show its window
-            import tkinter as tk
-            from tkinter import messagebox
-            root = tk.Tk(); root.withdraw()
-            messagebox.showinfo("Birdbrain", "Birdbrain is already running. Use its icon in the system tray.")
+            words = f"Birdbrain is already running. Use its icon in the {system.TRAY}."
+            try:
+                if system.NAME == "mac":
+                    system.notify(None, "Birdbrain", words)
+                else:
+                    import tkinter as tk
+                    from tkinter import messagebox
+                    root = tk.Tk(); root.withdraw()
+                    messagebox.showinfo("Birdbrain", words)
+            except Exception:
+                pass
         sys.exit(0)
     moved = migrate_old_data()   # before logging opens the log file
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)

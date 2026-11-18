@@ -114,7 +114,7 @@ class Updates(unittest.TestCase):
             self.assertEqual(cmd[1], "--build-info")
             Path(cmd[2]).write_text(json.dumps({"tag": TAG}))
         with mock.patch.object(updater.subprocess, "run", run_new_build):
-            app = up.stage(path, rel)
+            app, info = up.stage(path, rel)
         self.assertTrue((app / "Birdbrain.exe").exists())
         # a build that says it's a different one isn't installed
         with mock.patch.object(updater.subprocess, "run", lambda cmd, **kw: Path(cmd[2]).write_text('{"tag": "exp-0-x"}')):
@@ -124,7 +124,7 @@ class Updates(unittest.TestCase):
         def broken(cmd, **kw):   # nor one that doesn't start
             raise subprocess.CalledProcessError(1, cmd)
         with mock.patch.object(updater.subprocess, "run", broken):
-            with self.assertRaisesRegex(updater.UpdateError, "didn't start on this PC"):
+            with self.assertRaisesRegex(updater.UpdateError, "didn't start on this computer"):
                 up.stage(path, rel)
 
     def test_a_download_that_does_not_match_its_sha256_is_thrown_away(self):

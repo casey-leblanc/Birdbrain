@@ -1,6 +1,7 @@
-# Builds the experimental Windows app on GitHub's Windows machine, checks the build with its own self-test, starts it
-# the way a student would, and attaches the zip to a pre-release. Nothing is published unless every step passes, and
-# nothing here ever makes a normal release: experimental builds are pre-releases tagged exp-<version>-<commit>.
+# Builds the experimental app on GitHub's Windows and Mac machines, checks each build with its own self-test, starts
+# it the way a student would, updates it from one build to the next, and attaches the files to a pre-release. Nothing
+# is published unless every step for that system passes, and nothing here ever makes a normal release: experimental
+# builds are pre-releases tagged exp-<version>-<commit>.
 name: Build experimental app
 
 on:
@@ -38,6 +39,8 @@ jobs:
     needs: page
     runs-on: windows-latest
     timeout-minutes: 40
+    outputs:
+      tag: ${{ steps.selftest.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -175,3 +178,159 @@ jobs:
           [ -s notes.md ] || echo "- Rebuilt" > notes.md
           gh release create "$TAG" dist/*.zip selftest-result.txt --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "Birdbrain experimental $VERSION (${GITHUB_SHA::7})" --notes-file notes.md
+
+  mac:
+    # GitHub's Macs can build the app, run its self-test, start it and update it. What needs eyes and hands (the
+    # window, the menu bar, signing in) is in docs/experimental/TESTING.md for students with Macs.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-15, arch: arm64}          # Apple silicon
+          - {os: macos-15-intel, arch: x64}      # Intel
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install -r birdbrain/requirements.txt pyinstaller
+
+      - name: Test
+        run: python -m unittest discover tests
+
+      - name: Build
+        run: python build.py
+
+      - name: Self-test the build
+        id: selftest
+        timeout-minutes: 15
+        run: |
+          set -u
+          ls -la dist
+          ZIP=$(ls dist/Birdbrain-*-mac-${{ matrix.arch }}.zip)
+          mkdir selftest && ditto -x -k "$ZIP" selftest
+          APP="$PWD/selftest/Birdbrain.app"; BIN="$APP/Contents/MacOS/Birdbrain"
+          codesign --verify --deep --strict "$APP" && echo "The seal on the app is whole."
+          file "$BIN"
+          "$BIN" --selftest "$PWD/selftest-result.txt" || true
+          cat selftest-result.txt
+          grep -qx 'ALL PASS' selftest-result.txt || { echo "The packaged app failed its self-test"; exit 1; }
+          "$BIN" --build-info "$PWD/build-info.json"
+          cat build-info.json; echo
+          python - <<'PY'
+          import json, os
+          info = json.load(open("build-info.json"))
+          want = os.environ["GITHUB_SHA"][:7]
+          assert info["commit"] == want, f"The build says it is {info['tag']}, not commit {want}"
+          assert info["tag"].startswith("exp-"), f"An experimental build must be tagged exp-, not {info['tag']}"
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"tag={info['tag']}\nversion={info['version']}\n")
+          PY
+          hdiutil verify dist/Birdbrain-*-mac-${{ matrix.arch }}.dmg
+
+      - name: Start the app for real
+        # Opened the way a person opens it; it must come up and stay up, with its menu bar icon and its menu. A second
+        # copy must hand over to it and leave, and opening it again (as the Dock icon does) must reach the first.
+        timeout-minutes: 6
+        run: |
+          set -u
+          APP="$PWD/selftest/Birdbrain.app"; BIN="$APP/Contents/MacOS/Birdbrain"
+          DATA="$PWD/launch-data"; mkdir -p "$DATA"
+          LOG="$DATA/Birdbrain/birdbrain.log"
+          seen() { [ -f "$LOG" ] && grep -q "$1" "$LOG"; }
+          await() { for i in $(seq 1 "$2"); do seen "$1" && return 0; sleep 1; done; return 1; }
+          open --env APPDATA="$DATA" "$APP" --args --background
+          await 'List page served' 90 || { [ -f "$LOG" ] && cat "$LOG"; echo "Birdbrain didn't start"; exit 1; }
+          PID=$(pgrep -f "$BIN" | head -1); echo "Running as $PID"
+          for n in 1 2; do
+            APPDATA="$DATA" "$BIN" --background & second=$!
+            for i in $(seq 1 30); do kill -0 "$second" 2>/dev/null || break; sleep 1; done
+            if kill -0 "$second" 2>/dev/null; then kill "$second"; echo "A second copy didn't hand over and leave"; exit 1; fi
+          done
+          echo "Two more copies handed over to the first and left."
+          await 'Mac: the menu bar icon is up' 20 || { cat "$LOG"; echo "No menu bar icon"; exit 1; }
+          await 'Mac menu: ' 20 || { cat "$LOG"; echo "The standard menu wasn't set up"; exit 1; }
+          grep 'Mac menu: ' "$LOG" | grep -q 'Settings…' || { cat "$LOG"; echo "No Settings… in the menu"; exit 1; }
+          grep 'Mac menu: ' "$LOG" | grep -q 'Quit Birdbrain' || { cat "$LOG"; echo "No Quit in the menu"; exit 1; }
+          open "$APP"                                   # what a click on the Dock icon does
+          await 'Opened again' 20 || { cat "$LOG"; echo "Opening it again didn't reach the running copy"; exit 1; }
+          sleep 5
+          cat "$LOG"
+          kill -0 "$PID" 2>/dev/null || { echo "Birdbrain stopped by itself"; exit 1; }
+          if grep -Eq 'Traceback|CRITICAL' "$LOG"; then echo "Birdbrain logged an error while starting"; exit 1; fi
+          [ "$(pgrep -f "$BIN" | wc -l | tr -d ' ')" = "1" ] || { pgrep -fl "$BIN"; echo "More than one copy is running"; exit 1; }
+          kill "$PID"
+          {
+            echo "PASS  started the normal way and stayed up, with its menu bar icon"
+            echo "PASS  the standard menu has Settings… and Quit Birdbrain"
+            echo "PASS  two more copies handed over to the first and left"
+            echo "PASS  opening it again (the Dock icon) reached the running copy"
+          } >> selftest-result.txt
+
+      - name: Update for real
+        # The updater's last steps on a real Mac: a copy that says it is an older build installs this build from its
+        # zip, the script swaps the app once that copy has quit, and the new version is opened.
+        timeout-minutes: 8
+        run: |
+          set -u
+          ZIP="$PWD/$(ls dist/Birdbrain-*-mac-${{ matrix.arch }}.zip)"
+          mkdir update-test && ditto -x -k "$ZIP" update-test
+          APP="$PWD/update-test/Birdbrain.app"; BIN="$APP/Contents/MacOS/Birdbrain"
+          STAMP=$(find "$APP" -name build.json -not -type l | head -1); echo "Stamp: $STAMP"
+          echo '{"version": "0.0.1", "commit": "0000000", "tag": "exp-0.0.1-0000000"}' > "$STAMP"
+          echo "left over from the old version" > "$APP/Contents/Resources/stale.txt"
+          codesign --force --deep --sign - "$APP"         # an older build, whole again
+          DIR="$HOME/Library/Caches/Birdbrain-update"; rm -rf "$DIR"
+          AFTER="$PWD/after-update.json"
+          "$BIN" --build-info "$PWD/before-update.json" && cat before-update.json && echo
+          "$BIN" --install-update "$ZIP" --build-info "$AFTER" & old=$!
+          for i in $(seq 1 150); do kill -0 "$old" 2>/dev/null || break; sleep 1; done
+          if kill -0 "$old" 2>/dev/null; then kill "$old"; echo "The old version didn't hand over and quit"; exit 1; fi
+          for i in $(seq 1 180); do [ -f "$AFTER" ] && break; sleep 1; done
+          [ -f "$DIR/update.log" ] && cat "$DIR/update.log"
+          [ -f "$DIR/result.json" ] && cat "$DIR/result.json"
+          [ -f "$AFTER" ] || { echo "The new version was never started after the swap"; exit 1; }
+          python - "$AFTER" "$DIR/result.json" "${{ steps.selftest.outputs.tag }}" <<'PY'
+          import json, sys
+          now, result, want = json.load(open(sys.argv[1])), json.load(open(sys.argv[2])), sys.argv[3]
+          assert now["tag"] == want, f"After the update the app says it is {now['tag']}, not {want}"
+          assert result["ok"], "The update script reported a failure"
+          PY
+          [ ! -e "$APP/Contents/Resources/stale.txt" ] || { echo "A file from the old version was left behind"; exit 1; }
+          [ -e "$DIR/previous/Contents/Resources/stale.txt" ] || { echo "The version in use wasn't kept"; exit 1; }
+          codesign --verify --deep --strict "$APP" && echo "The updated app's seal is whole."
+          echo "PASS  updated itself from exp-0.0.1-0000000 to ${{ steps.selftest.outputs.tag }}, kept the old app, opened the new one" >> selftest-result.txt
+          mv selftest-result.txt selftest-result-mac-${{ matrix.arch }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Birdbrain-mac-${{ matrix.arch }}
+          path: |
+            dist/*.zip
+            dist/*.dmg
+            selftest-result-mac-${{ matrix.arch }}.txt
+          if-no-files-found: error
+
+  mac-release:
+    # The Mac files join the pre-release the Windows job made for this commit.
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Birdbrain-mac-*
+          merge-multiple: true
+          path: mac
+      - name: Add to the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.windows.outputs.tag }}
+        run: |
+          find mac -type f | sort
+          gh release upload "$TAG" $(find mac -type f) --clobber --repo "$GITHUB_REPOSITORY"
+

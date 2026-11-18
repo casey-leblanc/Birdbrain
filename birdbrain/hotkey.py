@@ -25,7 +25,9 @@ _TAKEN = 1409   # ERROR_HOTKEY_ALREADY_REGISTERED
 
 
 def available() -> bool:
-    return sys.platform == "win32"
+    """Windows only for now (system.py says where)."""
+    import system
+    return system.HOTKEY and sys.platform == "win32"
 
 
 def tidy(combo: str) -> str:

@@ -6,13 +6,14 @@
 """
 from __future__ import annotations
 
-import contextlib
 import logging
 import socket
 import sys
 import time
 from threading import Event
 from urllib.parse import urlparse
+
+import system
 
 log = logging.getLogger(__name__)
 
@@ -52,21 +53,6 @@ def online(address: str, tries: int = 12, pause: float = 10, connect=socket.crea
     return False
 
 
-@contextlib.contextmanager
 def awake():
-    """Keep Windows from going to sleep until the block ends (the display can still turn off)."""
-    ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
-    kernel = None
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            kernel = ctypes.windll.kernel32
-            kernel.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
-        except Exception:
-            log.exception("Couldn't ask Windows to stay awake")
-            kernel = None
-    try:
-        yield
-    finally:
-        if kernel is not None:
-            kernel.SetThreadExecutionState(ES_CONTINUOUS)
+    """Keep the computer from going to sleep until the block ends (the display can still turn off): system.py."""
+    return system.keep_awake()

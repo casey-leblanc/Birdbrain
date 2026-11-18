@@ -93,7 +93,7 @@ class AnInstalledCopy(FirstRun):
         self.assertTrue(self.asked[-1]["autostart"])
 
     def test_and_can_be_unticked(self):
-        self.page.locator("#setup-form label", has_text="Start Birdbrain with Windows").click()
+        self.page.locator("#setup-form label", has_text="Start Birdbrain when I sign in").click()
         self.page.locator("#setup-form button[type=submit]").click()
         self.page.locator("#step-look:visible").wait_for()
         self.assertFalse(self.asked[-1]["autostart"])

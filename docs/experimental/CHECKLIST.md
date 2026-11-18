@@ -292,3 +292,34 @@ One test for everything here: does it help a student see what to do and start on
 - Not drawing off-screen cards (project 3) now applies only to a long list, over 80 cards. On a short list it
   gained nothing, and a card the browser hadn't drawn yet could report no text for a moment, which two tests met
   on the slower build machine.
+
+## 5. Mac and test pack
+
+- [ ] 1. One platform module with a Windows half and a Mac half; both halves' pure logic tested on Linux
+- [ ] 2. The window and the menu bar: window, menu bar icon, Dock icon reopens, Cmd for Ctrl, the standard menu
+- [ ] 3. `build.py` makes `Birdbrain.app`, ad-hoc signed, as a `.dmg` and a zip, for Apple silicon and Intel
+- [ ] 4. Mac jobs in the workflow: tests, build, self-test, start, a second copy hands over; files join the pre-release
+- [ ] 5. The self-updater replaces the `.app` and restarts it, proven on GitHub's Mac
+- [ ] 6. Not signed yet, said plainly; what the owner needs to sign both platforms
+- [ ] 7. `TESTING.md`: the one guide for student testers
+- [ ] 8. `CHANGES.md`; release notes link both; the README covers Mac install
+- [ ] 9. A last check of the whole branch
+- [ ] 10. One short message to the owner
+
+### Decisions
+
+- The platform module is `system.py`, which is whichever of `system_win.py` and `system_mac.py` fits. The feature
+  modules (`vault`, `autostart`, `power`, `instance`, `toast`, `updater`) keep their own rules and ask `system`
+  for the part that differs; a test fails if any other module reaches for the system directly.
+- The Mac half talks to the Mac through its own command-line tools (`security`, `caffeinate`, `afplay`,
+  `osascript`, `open`, `ditto`) rather than through libraries, so what it asks them can be tested on Linux, and the
+  update script is run for real there with ordinary tools standing in for `ditto` and `open`.
+- Not on the Mac yet, switched off in its half so the app hides them: the shortcut that works anywhere on the
+  computer (it needs either Carbon calls nobody here can try, or the Accessibility permission), the small
+  always-on-top quick write window, and going to a card by clicking its notification (macOS shows a notification
+  sent this way as coming from its own script runner).
+- Sign-in on a Mac uses Chrome if it is installed, else Edge, else the Chromium Birdbrain downloads.
+- Two Mac builds, Apple silicon and Intel, not one universal: the browser driver inside is built for one or the
+  other.
+- On a Mac the window is an ordinary Mac window with the system's own title bar, not the one Birdbrain draws for
+  itself on Windows.
