@@ -45,7 +45,8 @@ class BackupPage(PageTest):
         self.page.keyboard.press("Escape")
         row = self.row("Band practice")
         row.wait_for()
-        self.assertIn("Band", row.inner_text())
+        row.scroll_into_view_if_needed()
+        self.assertIn("Band", row.locator(".lab").text_content())               # it carries the label that came with it
         self.page.locator("#settings").wait_for(state="hidden")
         self.page.keyboard.press("s")                                           # and importing it again changes nothing
         self.page.locator("#settings[open]").wait_for()

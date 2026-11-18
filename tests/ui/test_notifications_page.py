@@ -108,7 +108,7 @@ class ClickedNotification(PageTest):
         self.focus = {"n": 1, "id": "moodle:cm:3", "at": time.time()}
         row = self.page.locator(".row.landed")
         row.wait_for(timeout=9000)
-        self.assertIn("Urease", row.inner_text())
+        self.assertIn("Urease", row.text_content())
         self.assertEqual(self.page.locator("dialog[open]").count(), 0)
         focused = self.page.evaluate("() => document.activeElement.closest('.row').dataset.id")
         self.assertEqual(focused, "moodle:cm:3")
