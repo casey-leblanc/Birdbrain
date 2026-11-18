@@ -857,6 +857,10 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<p class="hint">Clear a time to skip that one. New work found by a scan is said too, as one line.</p>'
         '<div class="btn-row"><button type="button" class="btn" id="notify-test">Show me one</button></div>'
         '<p class="hint" id="notify-msg" aria-live="polite"></p></div>'
+        '<div class="set-sec" id="autostart-sec" hidden><h3>When Windows starts</h3>'
+        '<label class="check"><input type="checkbox" id="autostart-on"><span>Start Birdbrain too, in the tray</span></label>'
+        '<p class="hint">Reminders only come while Birdbrain is running. With this on, you never have to open it first.</p>'
+        '<p class="hint" id="autostart-msg" aria-live="polite"></p></div>'
         '<div class="set-sec"><h3>Sounds</h3><div class="sound-row"><label class="check"><input type="checkbox" id="sound-on">'
         "<span>A soft call when something new is due, a chirp when you finish today's list</span></label>"
         '<button type="button" class="act" id="sound-test">Play the call</button></div></div>')
@@ -1059,7 +1063,7 @@ _TITLEBAR = ('<div class="titlebar"><div class="edge" data-edge="top"></div><div
              '<button type="button" class="win-btn close" id="win-close" aria-label="Close" title="Close">&#xE8BB;</button></div>')
 
 
-def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url: str = "") -> str:
+def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url: str = "", autostart: bool = False) -> str:
     """First run, in two steps, meant to take under a minute. 1: your school. Choosing one Birdbrain knows (LSU)
     fills in where Moodle and Outlook are; "Another school" asks for the addresses, with a short guide to finding
     each (checked, not saved). 2: make it yours: Glass or Focus and a theme, and the page itself takes each choice
@@ -1129,6 +1133,8 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<label class="check"><input type="checkbox" name="gradescope"><span>Gradescope</span></label>'
         '<label class="check"><input type="checkbox" name="mcgraw"><span>McGraw Hill Connect</span></label>'
         '<p class="hint">Only if your courses use them. You sign in to each in the same window as Moodle.</p></fieldset>',
+        ('<label class="check"><input type="checkbox" name="autostart" checked><span>Start Birdbrain with Windows, so reminders '
+         'arrive without opening it</span></label>' if autostart else ""),
         '<p class="form-error" role="alert"></p>',
         '<div class="actions-row"><button class="btn primary" type="submit">Continue</button></div>',
         f'</form><p class="hint about" id="setup-about">{e(NOT_LSU)} {e(STAYS_HERE)}</p></section>',
@@ -1767,6 +1773,7 @@ school();
 form.addEventListener('submit',function(ev){ev.preventDefault();err.textContent='';
   var body={moodle:f.moodle.value.trim(),outlook:f.outlook.value.trim(),no_outlook:f.account.value==='none',
     gradescope:f.gradescope.checked,mcgraw:f.mcgraw.checked};
+  if(f.autostart)body.autostart=f.autostart.checked;
   if(!body.moodle){err.textContent='Enter your Moodle address.';f.moodle.focus();return;}
   var btn=form.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Checking…';
   post(Object.assign({check:true},body)).then(function(){addr=body;show('look');})
@@ -2661,6 +2668,12 @@ document.getElementById('problem-save').addEventListener('click',function(){var 
     delete off.dataset.armed;off.textContent='Turn off';
     ask({off:true}).then(function(){msg.textContent='Telegram is off, and the bot’s token has been removed from this computer.';}).catch(say);});
 })();
+/* Settings > Notifications: start with Windows. Offered only where Birdbrain can do it (an installed copy on Windows). */
+(function(){var sec=document.getElementById('autostart-sec'),box=document.getElementById('autostart-on');if(!sec||!LIVE)return;
+  var msg=document.getElementById('autostart-msg');
+  api('/api/autostart',{}).then(function(r){sec.hidden=!r.available;box.checked=!!r.on;}).catch(function(){});
+  box.addEventListener('change',function(){api('/api/autostart',{on:box.checked}).then(function(r){box.checked=!!r.on;msg.textContent=r.message;})
+    .catch(function(e){box.checked=!box.checked;msg.textContent=e.message;});});})();
 /* the tray menu's actions: scan, sign in, hidden keywords, files, quit */
 var nowMsg=document.getElementById('scan-now-msg');
 function follow(el){var seen=false,tries=0,iv=setInterval(function(){status().then(function(s){

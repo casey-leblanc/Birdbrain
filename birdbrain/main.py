@@ -31,6 +31,7 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 
 import appwindow
+import autostart
 import backup
 import buildinfo
 import filters
@@ -50,7 +51,6 @@ from browser import NeedsLogin, interactive_login, open_context
 from config import (CONFIG_PATH, DATA_DIR, LOG_PATH, STATE_PATH, Settings, clean_moodle_url, clean_outlook_url,
                     migrate_old_data)
 from reader import is_receipt
-from keyword_dialog import edit_keywords
 from moodle import Moodle
 from gradescope import Gradescope
 from mcgraw import McGraw
@@ -178,7 +178,6 @@ class App:
         self.status = "Not scanned yet"
         self.last_sign_in_problems: list[str] = []
         self.problems: list[str] = []
-        self.dialog_open = threading.Lock()   # one keyword window at a time
         self._busy, self._busy_lock = 0, threading.Lock()   # scans running or about to (see scanning)
         self.scanning = False
         self.progress: Progress | None = None  # how far the scan running now has got
@@ -213,14 +212,11 @@ class App:
         # Left-click runs the default item: open the app window.
         self.icon = pystray.Icon("Birdbrain", make_icon(), "Birdbrain", menu=pystray.Menu(
             pystray.MenuItem("Open Birdbrain", self.on_show, default=True),
-            pystray.MenuItem("Refresh now", self.on_refresh),
-            pystray.MenuItem("Full rescan of Moodle", self.on_full),
-            pystray.MenuItem("Hide entries by keyword…", self.on_keywords),
-            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quick write", lambda: self.on_quick()),
+            pystray.MenuItem("Scan now", self.on_refresh),
             pystray.MenuItem("Sign in to your school sites…", self.on_login),
-            pystray.MenuItem("Settings…", lambda: os.startfile(CONFIG_PATH)),
-            pystray.MenuItem("Open log", lambda: os.startfile(LOG_PATH)),
-            pystray.MenuItem("Quit", self.on_quit),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", self.on_quit),   # everything else is in the window: Settings, and the menu in its corner
         ))
 
     @property
@@ -274,7 +270,7 @@ class App:
         b = report.build(self.store, self.settings, now)
         saved = prefs.load(self.store)
         if not self.set_up.is_set() and not board:   # first run: ask for the addresses
-            return report.render_setup(token, saved, app_window, self.settings.outlook_url)
+            return report.render_setup(token, saved, app_window, self.settings.outlook_url, autostart=autostart.available())
         p = self._progress_view()
         if board:
             return report.render_board(b, self.settings, self.status, now, self.store.version, saved, progress=p,
@@ -338,7 +334,21 @@ class App:
                 "open": self.api_open, "quit": self.api_quit, "sound": self.api_sound, "chirp": self.api_chirp,
                 "setup": self.api_setup, "addresses": self.api_addresses, "update": self.api_update,
                 "hotkey": self.shortcut.use, "quick-hide": self.api_quick_hide, "notifications": self.api_notifications,
-                "telegram": self.api_telegram, "problem": self.api_problem, "backup": self.api_backup}
+                "telegram": self.api_telegram, "problem": self.api_problem, "backup": self.api_backup,
+                "autostart": self.api_autostart}
+
+    def api_autostart(self, body: dict) -> dict:
+        """Settings > Notifications: start with the computer, or not (autostart.py); with no "on", just how it is."""
+        if "on" in body:
+            if not autostart.available():
+                raise ValueError("Only an installed copy of Birdbrain on Windows can start by itself.")
+            if not autostart.turn(bool(body["on"])):
+                raise ValueError("Windows wouldn't let Birdbrain change that. Nothing was changed.")
+            log.info("Start with Windows: %s", "on" if body["on"] else "off")
+        v = autostart.view()
+        return {"ok": True, **v, "message": "" if "on" not in body else
+                "Birdbrain will start in the tray when you sign in to Windows." if v["on"] else
+                "Birdbrain won't start by itself. Reminders come only while it is running."}
 
     def api_backup(self, body: dict) -> dict:
         """Settings > Advanced > Backup (backup.py): export what is the student's own to a file, or import one."""
@@ -582,6 +592,8 @@ class App:
         if look:
             prefs.update(self.store, look)
         self.settings = s
+        if autostart.available() and body.get("autostart", True):   # offered on the welcome page, already ticked
+            autostart.turn(True)
         log.info("Set up: Moodle %s, Outlook %s", s.moodle_url, "off" if body.get("no_outlook") else s.outlook_url)
         self.set_up.set()
         return {"ok": True, "moodle": s.moodle_url}
@@ -768,23 +780,6 @@ class App:
                 self.scanning = False
         threading.Thread(target=run, daemon=True, name="early-scan").start()
         return True
-
-    def on_keywords(self, *_):
-        if self.dialog_open.locked():
-            return
-        def run():
-            with self.dialog_open:
-                items = report.window(self.store, self.settings, datetime.now())
-                count = lambda k: sum(1 for i in items if filters.keyword_hit(i, [k]))
-                result = edit_keywords(self.settings.hidden_keywords, count, icon=make_icon())
-            if result is not None and result != self.settings.hidden_keywords:
-                self.settings = Settings.load()
-                self.settings.hidden_keywords = result
-                self.settings.save()
-                log.info("Hidden keywords now %s", result)
-                self.store.touch()   # lets an open list page pick up the change
-                self._refresh_view()
-        threading.Thread(target=run, daemon=True).start()
 
     def on_quit(self, *_):
         self.stop.set()

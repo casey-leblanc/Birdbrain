@@ -58,6 +58,49 @@ class NotificationSettings(PageTest):
         self.assertEqual(self.asked, [{"test": True}])
 
 
+class StartWithWindows(PageTest):
+    available = True
+
+    def setUp(self):
+        self.on, self.asked = True, []
+        super().setUp()
+
+    def actions(self) -> dict:
+        def autostart(body: dict) -> dict:
+            self.asked.append(body)
+            if "on" in body:
+                self.on = bool(body["on"])
+            return {"ok": True, "available": self.available, "on": self.available and self.on,
+                    "message": "" if "on" not in body else "Birdbrain will start in the tray when you sign in to Windows." if self.on
+                    else "Birdbrain won't start by itself. Reminders come only while it is running."}
+        return {"autostart": autostart}
+
+    def open_pane(self):
+        self.page.keyboard.press("s")
+        self.page.get_by_role("tab", name="Notifications").click()
+
+    def test_it_shows_how_it_is_and_turning_it_off_says_what_that_means(self):
+        self.open_pane()
+        box = self.page.locator("#autostart-on")
+        box.wait_for()
+        self.assertTrue(box.is_checked())
+        box.uncheck()
+        self.page.locator("#autostart-msg", has_text="Reminders come only while it is running").wait_for()
+        self.assertEqual(self.asked[-1], {"on": False})
+        box.check()
+        self.page.locator("#autostart-msg", has_text="will start in the tray").wait_for()
+
+
+class StartWithWindowsNotOffered(StartWithWindows):
+    available = False
+
+    def test_it_shows_how_it_is_and_turning_it_off_says_what_that_means(self):
+        self.open_pane()
+        self.page.locator("#notify-on").wait_for()
+        self.page.wait_for_timeout(400)
+        self.assertFalse(self.page.locator("#autostart-sec").is_visible())
+
+
 class ClickedNotification(PageTest):
     def test_the_open_window_moves_to_the_card_it_was_about(self):
         self.page.keyboard.press("s")                                           # even with Settings in the way

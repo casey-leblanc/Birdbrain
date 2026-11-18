@@ -167,7 +167,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 10. The states in between, each in one line
 - [x] 11. Backup: export and import personal items and labels
 - [x] 12. Access: keyboard, focus, contrast, names, text size
-- [ ] 13. Anything else worth it, one at a time
+- [x] 13. Anything else worth it, one at a time
 
 ### Decisions
 
@@ -276,3 +276,16 @@ One test for everything here: does it help a student see what to do and start on
   were already in rem, so it is one number on the root.
 - Commands now also answer to the plain word a student would try ("keys", "completed", "archived", "updates",
   "telegram", "everything").
+- Item 13, added: **start with Windows**. Reminders only come while Birdbrain runs, so a student who has to
+  remember to open it gets none: that fails "no setup". The welcome page offers it already ticked; Settings ›
+  Notifications turns it on or off. It is one value under the student's own Run key, pointing at this copy with
+  `--background`, and only an installed copy on Windows offers it. The packaged self-test writes, reads back and
+  removes a throwaway value in the build machine's real registry. Mac comes with project 5.
+- Item 13, added: **a tray menu that matches the window**. Open, Quick write, Scan now, Sign in, Quit. Full rescan,
+  the keyword window, the settings file and the log are in Settings › Advanced now, so the separate keyword window
+  (`keyword_dialog.py`) is gone.
+- Item 13, considered and left out, each for failing the test "does it help a student see what to do and start on
+  it, with no setup": a countdown on cards ("in 2 h": the page would need redrawing every minute to stay true, and
+  the time is already on the card); an "in progress" state (a third state to keep up by hand); a weekly summary
+  notification (the heavy-day call and the morning list already say it, and one more notification is one more to
+  ignore); a calendar file export (it has to be imported somewhere, which is setup).

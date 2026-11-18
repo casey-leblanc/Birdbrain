@@ -14,8 +14,8 @@ This is the experimental version, 2.0. There is no AI in it and no key or accoun
 1. Unzip `Birdbrain-…-windows.zip` anywhere you like, for example your Documents folder.
 2. Run `Birdbrain.exe` in the `Birdbrain` folder. Windows may show a warning because the app isn't signed yet:
    choose **More info**, then **Run anyway**.
-3. To start it with Windows: press Win+R, run `shell:startup`, and put a shortcut to
-   `Birdbrain.exe --background` in that folder. It then starts in the tray without opening the window.
+3. The welcome page offers **Start Birdbrain with Windows**, already ticked: it then starts in the tray when you
+   sign in, so reminders arrive without opening it. Settings › Notifications turns that on or off later.
 
 It needs Windows 10 or 11. The window uses Microsoft Edge's WebView2, which both already have; without it, the list
 opens in your web browser instead and a notification says why.
@@ -304,9 +304,9 @@ it off if that link is a timed quiz or exam.
 
 ## The tray icon
 
-The perched bird, with a red count of what's due today. Left-click opens the window. Right-click for Open, Refresh
-now, Full rescan of Moodle, keywords, Sign in, the settings file, the log and Quit. Closing the window only hides
-it; Birdbrain keeps scanning. Quit stops it.
+The perched bird, with a red count of what's due today. Left-click opens the window. Right-click for Open, Quick
+write, Scan now, Sign in and Quit; everything else is in the window. Closing the window only hides it; Birdbrain
+keeps scanning. Quit stops it.
 
 ## If something goes wrong
 

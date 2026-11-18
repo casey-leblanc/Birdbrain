@@ -12,6 +12,7 @@ import report
 
 class FirstRun(PageTest):
     status = "Not scanned yet."
+    can_autostart = False            # whether this copy could start with Windows (an installed copy can)
 
     def setUp(self):
         self.asked: list[dict] = []
@@ -20,7 +21,7 @@ class FirstRun(PageTest):
 
     def page_html(self, token: str) -> str:
         if not self.done:
-            return report.render_setup(token, prefs.load(self.store))
+            return report.render_setup(token, prefs.load(self.store), autostart=self.can_autostart)
         return super().page_html(token)
 
     def actions(self) -> dict:
@@ -78,6 +79,35 @@ class ChoosingLSU(FirstRun):
 
     def test_it_says_plainly_that_it_isnt_lsus(self):
         self.assertIn("not affiliated with", self.page.locator("#setup-about").inner_text())
+
+
+class AnInstalledCopy(FirstRun):
+    can_autostart = True
+
+    def test_starting_with_windows_is_offered_already_ticked(self):
+        box = self.page.locator("input[name=autostart]")
+        self.assertTrue(box.is_checked())
+        self.assertIn("so reminders arrive without opening it", self.page.locator("#setup-form").inner_text())
+        self.page.keyboard.press("Enter")
+        self.page.locator("#step-look:visible").wait_for()
+        self.assertTrue(self.asked[-1]["autostart"])
+
+    def test_and_can_be_unticked(self):
+        self.page.locator("#setup-form label", has_text="Start Birdbrain with Windows").click()
+        self.page.locator("#setup-form button[type=submit]").click()
+        self.page.locator("#step-look:visible").wait_for()
+        self.assertFalse(self.asked[-1]["autostart"])
+        self.page.locator("#look-go").click()
+        self.page.locator(".clear.first").wait_for()
+        self.assertFalse(self.asked[-1]["autostart"])
+
+
+class ACopyRunFromSource(FirstRun):
+    def test_it_isnt_offered_where_it_cant_be_done(self):
+        self.assertEqual(self.page.locator("input[name=autostart]").count(), 0)
+        self.page.keyboard.press("Enter")
+        self.page.locator("#step-look:visible").wait_for()
+        self.assertNotIn("autostart", self.asked[-1])
 
 
 class AnotherSchool(FirstRun):

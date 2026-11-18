@@ -129,6 +129,19 @@ def run(out: Path) -> int:
         return "written, read back and removed"
     check("credential store (for the Telegram token)", credential_store)
 
+    def start_with_the_computer():
+        """The real Run key, under a throwaway name: this copy written, read back, removed."""
+        import sys
+        import autostart
+        if not autostart.available():
+            return "not offered here (only an installed copy on Windows)"
+        name = "Birdbrain-selftest"
+        assert autostart.turn(True, name), "couldn't write the start-up value"
+        assert autostart.is_on(name) and sys.executable in (autostart._read(name) or ""), "it doesn't point at this copy"
+        assert autostart.turn(False, name) and autostart._read(name) is None, "couldn't remove it"
+        return "written under your own account, read back and removed"
+    check("start with Windows", start_with_the_computer)
+
     def phone_is_off():
         import notices
         import phone
