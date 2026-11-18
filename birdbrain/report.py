@@ -1447,12 +1447,15 @@ TOOLS_CSS = """
 .labels li{grid-template-columns:32px 1fr auto;grid-template-areas:"color nick reset" ". warn warn"}
 #label-form input[type=color]{width:44px;height:44px;padding:8px;border:0;background:none;cursor:pointer}
 .row.landed{position:relative}
-.row.landed::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 2px var(--q-fg);pointer-events:none;animation:landed 1.8s var(--m-out) forwards}
+.row.landed::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 2px var(--q-fg);pointer-events:none;animation:landed 1.8s var(--m-out) forwards}
 @keyframes landed{from{opacity:1}to{opacity:0}}
 :root[data-motion=off] .row.landed{outline:2px solid var(--q-fg)}
 """
 
 MOTION_CSS = """
+/* a long list: a card outside the window isn't laid out or painted until it's scrolled to (it keeps the height it
+   last had, or a likely one), so a list of hundreds costs what the cards on screen cost */
+.bands .row,.bin .row{content-visibility:auto;contain-intrinsic-height:auto 76px}
 /* the scan's progress, beside the status line: a slim track that fills as the scan goes; one that can't tell how far
    it has got (an inbox scan) sends a short band along it instead. Each layout sets its colours. */
 .scan-bar{display:inline-block;vertical-align:middle;width:min(160px,32vw);height:6px;margin-left:10px;border-radius:3px;overflow:hidden;

@@ -136,6 +136,9 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   filtering 200 cards, and not one layout read while the card only follows the pointer (the page counts its own
   reads in `window.birdbrainMeasures`). Frame times in headless Chromium without a GPU say little, so only a loose
   bound (250 ms) is put on them.
+- Cards outside the window aren't laid out or painted until they're scrolled to (`content-visibility`), so a list
+  of hundreds costs what the cards on screen cost. This came from the build machine, where showing 200 cards again
+  after a filter took one 52 ms step; it now takes about 3 ms here. The test's limit was left where it was.
 - Ripple and sheen are Glass at Full only (`lively()` in `feel.py`), and tuned by five CSS variables at the top of
   that file. The ripple is three discs scaled and faded; the sheen is one disc moved under the pointer: nothing is
   repainted to make either.

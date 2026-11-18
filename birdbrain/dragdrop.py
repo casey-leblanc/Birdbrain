@@ -9,8 +9,8 @@ Where a card may go is the app's decision (planner.py): the page asks, and a ref
 the card answers with a small shake before going home.
 
 Nothing is measured while the card is merely following the pointer. Positions are read once at pick-up, and again
-only when the card's landing place changes (a few times in a drag, never per frame); every one of those reads goes
-through box(), which counts them so a test can hold the page to this.
+only when the card's landing place changes or the list has scrolled a long way (a few times in a drag, never per
+frame); every one of those reads goes through box(), which counts them so a test can hold the page to this.
 
 From the keyboard, on a focused card: M picks it up, the arrow keys move it (between days and columns too), Enter
 drops it, Esc puts it back; D sends it to Completed. Each move is said for screen readers ("Thursday, second of
@@ -62,7 +62,7 @@ function undoMove(r,id){return function(){api('/api/move-undo',{undo:r.undo}).th
   .then(function(){toast('Put back');}).catch(function(e){toast("Couldn't undo: "+e.message);});};}
 
 /* where everything is, in page coordinates: read at pick-up and again only when the landing place changes */
-function measure(d){var s=scrollNow,seen={};
+function measure(d){var s=scrollNow=window.scrollY,seen={};d.measuredAt=s;   /* asked, not remembered: moving the gap can change the page's height, and so its scroll */
   d.lists=dayLists().map(function(ul){var r=box(ul),h=ul.previousElementSibling,top=h&&h.classList.contains('grp')?box(h).top:r.top;
     return {ul:ul,day:ul.dataset.day,left:r.left,right:r.right,top:top+s,bottom:r.bottom+s,
       rows:rowsOf(ul,d.li).map(function(c){var b=box(c);seen[c.dataset.id]={x:b.left,y:b.top+s};return {el:c,mid:b.top+b.height/2+s};})};});
@@ -88,6 +88,7 @@ function frame(){if(!drag||!drag.active)return;var d=drag;d.raf=0;
   d.gx+=(tx-d.gx)*pull;d.gy+=(ty-d.gy)*pull;
   var lean=root.dataset.layout==='glass'?3:1.2,tilt=CALM.matches?0:Math.max(-lean,Math.min(lean,(tx-d.gx)*.07));   /* Focus leans less */
   d.g.f.style.transform='translate3d('+(d.gx-d.g.r.left)+'px,'+(d.gy-d.g.r.top)+'px,0) rotate('+tilt+'deg)';
+  if(Math.abs(scrollNow-d.measuredAt)>240)measure(d);   /* scrolled a long way: cards that have come into view have their real heights now */
   var t=aimAt(d,d.x,d.y);if(!sameAim(t,d.aim))setAim(d,t);
   var edge=d.y<56?-1:d.y>window.innerHeight-56?1:0;if(edge)window.scrollBy(0,edge*14);   /* held near an edge: the list scrolls */
   if(edge||Math.abs(tx-d.gx)>.4||Math.abs(ty-d.gy)>.4)d.raf=requestAnimationFrame(frame);}
