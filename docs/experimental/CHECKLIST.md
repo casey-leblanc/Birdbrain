@@ -166,7 +166,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
 - [x] 10. The states in between, each in one line
 - [x] 11. Backup: export and import personal items and labels
-- [ ] 12. Access: keyboard, focus, contrast, names, text size
+- [x] 12. Access: keyboard, focus, contrast, names, text size
 - [ ] 13. Anything else worth it, one at a time
 
 ### Decisions
@@ -263,3 +263,16 @@ One test for everything here: does it help a student see what to do and start on
   labels, and their classes' colours and nicknames. It is plain JSON in Downloads. Import adds what isn't there:
   an item with the same title, time and label is left alone, so importing twice changes nothing, and what is
   already set on the new computer is never overwritten.
+- Access was done by measuring first. Contrast is measured in the browser against what is really drawn behind
+  each piece of text (the page is photographed with its text made invisible, so glass over a photo counts as it
+  looks): `tests/ui/contrast.py`. All 28 looks (5 Glass and 9 Focus themes, day and night) passed for the list,
+  Settings and quick write once the measuring was right; the lowest found was 5.6:1. A test deliberately makes
+  text unreadable to show the audit catches it. Nothing had to be recoloured.
+- Every control, window and picture already had a name, and every tab stop already showed a ring; both are now
+  held by tests that walk the list and every Settings section with Tab.
+- Keyboard: one test does a whole sitting with no mouse. On a card, M moves the card, so the menu from a card is
+  Ctrl+K (which runs everything the menu has) or M after leaving the card.
+- Text size is new: Smaller, Standard, Larger, Largest (90, 100, 115, 130%), in Settings › Look. The page's sizes
+  were already in rem, so it is one number on the root.
+- Commands now also answer to the plain word a student would try ("keys", "completed", "archived", "updates",
+  "telegram", "everything").

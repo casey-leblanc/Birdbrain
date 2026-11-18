@@ -230,8 +230,9 @@ Its sections are listed down the side, in this order:
 - **Sign-ins**: sign in to your school sites again; Gradescope and McGraw Hill Connect on or off; Scan now.
 - **Look**: Glass (frosted panels over a photo of the sky) or Focus (a calm page with nothing but your list), a
   theme for each, day or night, or follow Windows. **Motion** is Full, Subtle or Off; until you choose, it follows
-  your system's reduce-motion setting. **Custom** lets you use your own photos (Glass) or colours
-  (Focus); Birdbrain keeps the words readable on whatever you pick.
+  your system's reduce-motion setting. **Text size** is Smaller, Standard, Larger or Largest, and scales every
+  piece of text at once. **Custom** lets you use your own photos (Glass) or colours (Focus); Birdbrain keeps the
+  words readable on whatever you pick.
 - **Notifications**: see above; and the sounds.
 - **Keys**: every key, and the quick write shortcut that works anywhere on the PC.
 - **Labels**: rename, recolour, delete and add the labels for things that aren't classes; and a colour and a
@@ -243,6 +244,17 @@ Its sections are listed down the side, in this order:
   and Outlook addresses; a full rescan of Moodle; "Scan back to", which reads older emails back to a date you
   pick; hidden keywords (anything whose title or course contains one goes straight to Archived); the log and the
   settings file.
+
+## Access
+
+- **Keyboard.** Everything can be done without a mouse: the keys above cover every action on a card, Ctrl+K runs
+  everything in the menu, and every window is made of ordinary buttons and boxes that Tab reaches.
+- **Focus.** Whatever has the keyboard focus shows a clear ring, on the list and in every window.
+- **Contrast.** Text is at least 4.5:1 against what is really behind it (3:1 for large headings), in every
+  built-in theme, day and night, including text over the Glass photos. This is measured on each build.
+- **Screen readers.** Every control, window and picture has a name; changes are announced (a card ticked off, a
+  move, a filter, a scan's trouble); a card's tick box says what the card is and when it is due.
+- **Text size** and **Motion** are in Settings › Look. Motion Off stops everything from moving.
 
 ## Backup, and moving to another computer
 

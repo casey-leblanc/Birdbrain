@@ -20,7 +20,7 @@ BINS = ("completed", "archived")
 DEFAULTS = {"layout": theme.DEFAULT_LAYOUT, "theme": theme.DEFAULT_THEME, "focus_theme": theme.DEFAULT_THEME,
             "mode": theme.DEFAULT_MODE, "sound": True, "frame": "wide",
             # "full", "subtle" or "off" (motion.py); "" follows the system's reduce-motion setting
-            "motion": "", "courses": {}, "bins": {}, "imported": False,
+            "motion": "", "text": "", "courses": {}, "bins": {}, "imported": False,
             # the Custom theme: {"accent", "light": {measured photo}, "dark": {...}} and {"light": {4 colours}, ...}
             "glass_custom": {}, "focus_custom": {}}
 # Labels for things that aren't classes. These four to begin with; the student renames, recolours, removes and adds.
@@ -30,6 +30,10 @@ DEFAULTS["labels"] = [dict(x) for x in LABELS]
 GLASS_THEMES = (*glass.SCHEMES, theme.CUSTOM)
 FOCUS_THEMES = (*theme.THEMES, theme.CUSTOM)
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+# Text size (Settings > Look): "" is the standard size; the others scale every piece of text on the page.
+TEXT_SIZES = {"small": ("Smaller", 90), "": ("Standard", 100), "large": ("Larger", 115), "larger": ("Largest", 130)}
 
 
 def load(store: Store) -> dict:
@@ -58,6 +62,8 @@ def load(store: Store) -> dict:
     p["labels"] = _clean_labels(p["labels"]) if "labels" in saved else [dict(x) for x in LABELS]
     if p["motion"] not in ("", "full", "subtle", "off"):
         p["motion"] = ""
+    if p.get("text") not in TEXT_SIZES:
+        p["text"] = ""
     return p
 
 
@@ -181,6 +187,10 @@ def update(store: Store, patch: dict) -> dict:
         if patch["motion"] not in ("", "full", "subtle", "off"):
             raise ValueError("Unknown motion level.")
         p["motion"] = patch["motion"]
+    if "text" in patch:
+        if patch["text"] not in TEXT_SIZES:
+            raise ValueError("Unknown text size.")
+        p["text"] = patch["text"]
     if "sound" in patch:
         p["sound"] = bool(patch["sound"])
     if "courses" in patch:  # {code: {nick, color}} or {code: null} to reset

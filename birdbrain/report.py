@@ -779,6 +779,10 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
                      for v, label in (("wide", "Full width"), ("narrow", "Narrow, more photo")))
     levels = "".join(f'<label title="{e(motion.LEVEL_HINTS[v])}"><input type="radio" name="motion" value="{v}">'
                      f'<span>{motion.LEVEL_NAMES[v]}</span></label>' for v in motion.LEVELS)
+    sizes = "".join(f'<label><input type="radio" name="text-size" value="{v}"><span>{name}</span></label>'
+                    for v, (name, _) in prefs_mod.TEXT_SIZES.items())
+    text_choice = ('<h4 class="sub">Text size</h4>'
+                   f'<div class="seg text-size" role="radiogroup" aria-label="Text size">{sizes}</div>')
     motion_choice = ('<h4 class="sub">Motion</h4>'
                      f'<div class="seg motion" role="radiogroup" aria-label="Motion">{levels}</div>'
                      '<p class="hint" id="motion-hint" aria-live="polite"></p>')
@@ -832,7 +836,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         f'<div class="set-sec"><h3>Layout</h3><div class="seg layout" role="radiogroup" aria-label="Layout">{layouts}</div>'
         '<p class="hint">Glass sets your list on frosted panels overlooking the open sky. Focus is a calm, roomy page with '
         'nothing but your list. Each has its own themes, and a Custom one you make yourself.</p>'
-        f'{frame_choice}{motion_choice}</div>'
+        f'{frame_choice}{text_choice}{motion_choice}</div>'
         '<div class="set-sec"><h3>Theme</h3>'
         f'<div class="themes" role="radiogroup" aria-label="Theme">{_theme_options(layout, photo, p)}</div>'
         f'{_custom_panel(layout, photo, p)}'
@@ -1029,7 +1033,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
     page_data = page_data.replace("</", "<\\/")   # can't close the <script> early
     return "".join([
         f'<!doctype html><html lang="en"{' class="app-window"' if app_window and token else ''} data-frame="{e(prefs["frame"])}" data-layout="{e(layout)}" data-theme="{e(prefs_mod.active_theme(prefs))}" data-mode="{mode}" '
-        f'data-mode-pref="{e(prefs["mode"])}" data-motion-pref="{e(prefs.get("motion", ""))}">'
+        f'data-mode-pref="{e(prefs["mode"])}" data-motion-pref="{e(prefs.get("motion", ""))}" data-text="{e(prefs.get("text", ""))}">'
         '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{motion.HEAD_JS}{head_js}</script>",
@@ -1536,6 +1540,9 @@ TOOLS_CSS = """
 .field.time{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;max-width:460px}
 .field.time input{width:auto;flex:none}
 .notify-rows.off{opacity:.5}
+/* text size (Settings > Look): the page's sizes are in rem, so one number scales them all */
+:root[data-text=small]{font-size:90%}:root[data-text=large]{font-size:115%}:root[data-text=larger]{font-size:130%}
+body{font-size:1rem}
 #problem{width:min(760px,calc(100vw - 32px))}
 #problem textarea{width:100%;font:inherit;color:inherit;background:var(--q-chip);border:1px solid var(--q-line);border-radius:8px;padding:10px 12px;resize:vertical}
 #problem-files{margin:14px 0 4px}
@@ -2565,6 +2572,9 @@ function switchLayout(to){var ground=((DATA.grounds||{})[to]||{})[root.dataset.m
     .finished.then(function(){location.reload();},function(){location.reload();});}
 if(root.classList.contains('arriving'))setTimeout(function(){root.classList.remove('arriving');root.style.removeProperty('--arrive');},1000);
 /* frame width (glass layout) */
+/* Text size: every piece of text scales with it, at once */
+settings.querySelectorAll('input[name=text-size]').forEach(function(r){r.checked=r.value===(PREFS.text||'');
+  r.addEventListener('change',function(){PREFS.text=r.value;root.dataset.text=r.value;savePrefs({text:r.value});});});
 /* Motion: Full, Subtle or Off. Until one is chosen, the system's own reduce-motion setting decides. */
 var MOTION_HINTS=DATA.motion_hints||{};
 function syncMotion(){settings.querySelectorAll('input[name=motion]').forEach(function(r){r.checked=r.value===root.dataset.motion;});
