@@ -45,3 +45,19 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   build from a file; the build on GitHub uses it to do a real update on Windows before anything is published.
 - The root README is the short student page; `birdbrain/README.md` is the full guide and ships in the zip. A test
   holds the LSU sentence to the agreed wording in both, on the welcome page and in Settings › About.
+
+## 2. Quick write and labels
+
+- [x] 1. Personal items in the store, with a label; a 1.1.2 database opens and keeps everything
+- [ ] 2. The reader for what a student types (`quickwrite.py`), with a table test of 60+ phrases
+- [ ] 3. Quick write in the window: Space, chips for what was understood, Enter, Ctrl+Enter, Esc, Backspace
+- [ ] 4. Space no longer ticks: X ticks, E opens details, ? shows every key; arrows and J/K across day groups
+- [ ] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
+- [ ] 6. System-wide hotkey on Windows (Ctrl+Alt+Space), changeable, with a small always-on-top quick write
+- [ ] 7. Labels: four to begin with plus your own, tags on cards, filter by tag, Settings › Labels
+- [ ] 8. Keyboard-only UI test of the whole thing, under a second of the page's own time
+
+### Decisions
+
+- An item stores its label's id ("life"), not its name, so renaming a label in Settings renames it everywhere.
+- "No time" for your own items stays 11:59 PM in the database, as in 1.1.2, so old items need no conversion.

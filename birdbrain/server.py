@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 import custom
 import glass
 import prefs
-from store import WHAT, Item, Store
+from store import LABEL_ID, WHAT, Item, Store
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +87,10 @@ class ListServer:
         if t and not re.fullmatch(r"\d{2}:\d{2}", t):
             raise ValueError("Time should look like 14:30.")
         kind, level = KIND_LEVEL[body["kind"]]
-        return Item(id=item_id, source="manual", kind=kind, title=title,
+        label = str(body.get("label") or "")
+        if label and not LABEL_ID.fullmatch(label):
+            raise ValueError("Unknown label.")
+        return Item(id=item_id, source="manual", kind=kind, title=title, label=label,
                     due=datetime.combine(day, time.fromisoformat(t) if t else time(23, 59)),
                     course=" ".join(str(body.get("course", "")).split())[:40],
                     detail=" ".join(str(body.get("notes", "")).split())[:300], level=level)
@@ -117,7 +120,7 @@ class ListServer:
         no_time = (item.due.hour, item.due.minute) == (23, 59)
         return {"ok": True, "item": {"id": item.id, "title": item.title, "kind": kind, "date": item.due.date().isoformat(),
                                      "time": "" if no_time else f"{item.due:%H:%M}", "course": item.course,
-                                     "notes": item.detail, "done": item.done_at is not None}}
+                                     "notes": item.detail, "label": item.label, "done": item.done_at is not None}}
 
     def restore_item(self, body: dict) -> dict:
         """Undo a delete: the same item back under its own id."""

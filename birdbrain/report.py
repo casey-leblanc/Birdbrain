@@ -238,7 +238,8 @@ def _manual_fields(i: Item) -> str:
     kind = (i.level or "exam") if i.kind == "test" else i.kind
     no_time = (i.due.hour, i.due.minute) == (23, 59)
     return json.dumps({"title": i.title, "kind": kind, "date": i.due.date().isoformat(),
-                       "time": "" if no_time else f"{i.due:%H:%M}", "course": i.course, "notes": i.detail})
+                       "time": "" if no_time else f"{i.due:%H:%M}", "course": i.course, "notes": i.detail,
+                       "label": i.label})
 
 
 def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
