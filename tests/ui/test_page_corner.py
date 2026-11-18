@@ -61,6 +61,7 @@ class Corner(PageTest):
         menu.wait_for(state="visible")
         self.page.keyboard.press("ArrowUp")         # wraps to the last
         self.page.keyboard.press("ArrowUp")
+        self.page.keyboard.press("ArrowUp")
         self.assertEqual(self.page.evaluate("document.activeElement.dataset.menu"), "update")
         self.page.keyboard.press("Enter")
         self.page.locator("#update-msg", has_text="newest version").wait_for()
