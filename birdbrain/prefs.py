@@ -21,6 +21,10 @@ DEFAULTS = {"layout": theme.DEFAULT_LAYOUT, "theme": theme.DEFAULT_THEME, "focus
             "mode": theme.DEFAULT_MODE, "sound": True, "frame": "wide", "courses": {}, "bins": {}, "imported": False,
             # the Custom theme: {"accent", "light": {measured photo}, "dark": {...}} and {"light": {4 colours}, ...}
             "glass_custom": {}, "focus_custom": {}}
+# Labels for things that aren't classes. These four to begin with; the student renames, recolours, removes and adds.
+LABELS = ({"id": "life", "name": "Life", "color": "#3fa7a0"}, {"id": "extracurricular", "name": "Extracurricular", "color": "#c77dbb"},
+          {"id": "appointment", "name": "Appointment", "color": "#e08a3c"}, {"id": "work", "name": "Work", "color": "#6b8fd6"})
+DEFAULTS["labels"] = [dict(x) for x in LABELS]
 GLASS_THEMES = (*glass.SCHEMES, theme.CUSTOM)
 FOCUS_THEMES = (*theme.THEMES, theme.CUSTOM)
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -49,7 +53,26 @@ def load(store: Store) -> dict:
     for k in ("glass_custom", "focus_custom"):
         if not isinstance(p[k], dict):
             p[k] = {}
+    p["labels"] = _clean_labels(p["labels"]) if "labels" in saved else [dict(x) for x in LABELS]
     return p
+
+
+def _clean_labels(given) -> list[dict]:
+    """Labels as they may be kept: an id like "life", a name, a colour. Anything else is dropped."""
+    out, seen = [], set()
+    for x in given if isinstance(given, list) else []:
+        if not isinstance(x, dict):
+            continue
+        lid, name, color = str(x.get("id", "")), " ".join(str(x.get("name", "")).split())[:24], str(x.get("color", ""))
+        if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", lid) and name and lid not in seen and len(out) < 24:
+            seen.add(lid)
+            out.append({"id": lid, "name": name, "color": color.lower() if _HEX.match(color) else "#888888"})
+    return out
+
+
+def label_names(p: dict) -> dict[str, str]:
+    """{"life": "Life", ...} for the labels the student has."""
+    return {x["id"]: x["name"] for x in p["labels"]}
 
 
 def active_theme(p: dict) -> str:

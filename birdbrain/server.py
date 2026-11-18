@@ -26,7 +26,8 @@ from urllib.parse import parse_qs, urlparse
 import custom
 import glass
 import prefs
-from store import LABEL_ID, WHAT, Item, Store
+import quickwrite
+from store import COURSE_CODE, LABEL_ID, WHAT, Item, Store
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ class ListServer:
         label = str(body.get("label") or "")
         if label and not LABEL_ID.fullmatch(label):
             raise ValueError("Unknown label.")
-        return Item(id=item_id, source="manual", kind=kind, title=title, label=label,
+        return Item(id=item_id, source="manual", kind=kind, title=title, label=label, timed=bool(t),
                     due=datetime.combine(day, time.fromisoformat(t) if t else time(23, 59)),
                     course=" ".join(str(body.get("course", "")).split())[:40],
                     detail=" ".join(str(body.get("notes", "")).split())[:300], level=level)
@@ -117,7 +118,7 @@ class ListServer:
         self.on_change()
         # everything Undo needs to put it back as it was
         kind = (item.level or "exam") if item.kind == "test" else item.kind
-        no_time = (item.due.hour, item.due.minute) == (23, 59)
+        no_time = not (item.timed if item.timed is not None else (item.due.hour, item.due.minute) != (23, 59))
         return {"ok": True, "item": {"id": item.id, "title": item.title, "kind": kind, "date": item.due.date().isoformat(),
                                      "time": "" if no_time else f"{item.due:%H:%M}", "course": item.course,
                                      "notes": item.detail, "label": item.label, "done": item.done_at is not None}}
@@ -143,6 +144,32 @@ class ListServer:
         was = self.store.set_placement(item_id, how)
         self.on_change()
         return {"ok": True, "was": was}
+
+    def courses(self) -> list[str]:
+        """The student's course codes ("CHEM 1202"), from everything stored, for @class in quick write."""
+        with self.store._lock:
+            rows = self.store._db.execute("SELECT DISTINCT course FROM items WHERE source != 'manual'").fetchall()
+        found = {f"{m.group(1)} {m.group(2)}" for (c,) in rows if (m := COURSE_CODE.search(c or ""))}
+        return sorted(found)
+
+    def quick(self, body: dict, now: datetime | None = None) -> dict:
+        """Quick write. Reads the typed line and says how it was understood (for the chips under the line); with
+        "save", adds it as an item of yours."""
+        text = str(body.get("text", ""))[:300]
+        skip = [str(s)[:60] for s in (body.get("skip") or [])][:20]
+        now = now or datetime.now()
+        got = quickwrite.read(text, now, self.courses(), prefs.label_names(prefs.load(self.store)), skip)
+        out = {"ok": True, "title": got.title, "date": got.day.isoformat(), "time": f"{got.time:%H:%M}" if got.time else "",
+               "label": got.label, "course": got.course, "kind": got.kind, "day": quickwrite.say_day(got.day, now.date()),
+               "chips": [{"what": c.what, "text": c.text, "says": c.says, "end": c.end} for c in got.chips]}
+        if body.get("save"):
+            if not got.title:
+                raise ValueError("Type what it is first.")
+            item = self._manual({**out, "notes": ""}, f"manual:{uuid.uuid4().hex[:12]}")
+            self.store.upsert(item)
+            self.on_change()
+            out["id"] = item.id
+        return out
 
     def kind(self, body: dict) -> dict:
         """The student says what an item is (assignment, quiz, exam or event). It holds for the item and for the
@@ -190,7 +217,7 @@ class ListServer:
         srv = self
         routes = {"/api/done": srv.set_done, "/api/items": srv.add_item, "/api/items/update": srv.update_item,
                   "/api/items/delete": srv.delete_item, "/api/items/restore": srv.restore_item,
-                  "/api/place": srv.place, "/api/kind": srv.kind, "/api/prefs": srv.save_prefs,
+                  "/api/place": srv.place, "/api/kind": srv.kind, "/api/quick": srv.quick, "/api/prefs": srv.save_prefs,
                   "/api/scan-mail": srv.scan_mail, "/api/photo-remove": srv.remove_photo}
         routes.update({f"/api/{name}": fn for name, fn in srv.actions.items()})
 

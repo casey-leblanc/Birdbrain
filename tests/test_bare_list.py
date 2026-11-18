@@ -58,12 +58,12 @@ class NoHeader(unittest.TestCase):
         between = page[page.index("</div>", page.index('id="app-menu"')) + 12:bands]
         self.assertEqual(between, "")
 
-    def test_one_menu_with_the_five_things(self):
+    def test_one_menu_holds_everything_else(self):
         page = board()
         menu = page[page.index('id="app-menu"'):page.index('<main class="bands">')]
-        self.assertEqual([w for w in ("Add item", "Settings", "Scan now", "Check for updates", "Quit Birdbrain") if w in menu],
-                         ["Add item", "Settings", "Scan now", "Check for updates", "Quit Birdbrain"])
-        self.assertEqual(menu.count('role="menuitem"'), 5)
+        want = ["Quick write", "Add item", "Settings", "Scan now", "Check for updates", "Quit Birdbrain"]
+        self.assertEqual([w for w in want if w in menu], want)
+        self.assertEqual(menu.count('role="menuitem"'), len(want))
 
     def test_both_layouts_carry_the_corner_styles_and_none_of_the_headers(self):
         s = store()

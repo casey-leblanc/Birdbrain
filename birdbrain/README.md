@@ -64,16 +64,35 @@ with a dotted underline opens the item in Moodle or Outlook.
 - **?** on a card opens **What is this?** if Birdbrain has it wrong: say it is an assignment, a quiz, an exam or
   an event. Your answer sticks, and it also goes for the others like it in the same course. Say once that
   "Biochemical Testing - Oxidase Test" is an assignment, and every "Biochemical Testing - …" lab follows.
-- **Your own items**: Add item, in the menu (or press N). A card you added has **Details**, with Edit and Delete.
+- **Your own items**: press **Space** and type. See **Quick write** below. A card you added has **Details**,
+  with Edit and Delete.
 
 In the top corner of the list:
 
 - **The dot** is Birdbrain's status. It breathes while a scan runs and says what it is reading; it turns red, with
   the reason beside it, when something needs you. Point at it to see when the last scan finished. Click it to
   scan now.
-- **The menu** (⋯, or press M): Add item, Settings, Scan now, Check for updates, Quit.
+- **The menu** (⋯, or press M): Quick write, Add item, Settings, Scan now, Check for updates, Quit.
 
 If a site needs signing in to again, a card at the top of the list says so, with a **Sign in** button.
+
+### Quick write
+
+Press **Space**, type one line, press **Enter**. That's a new item on your list.
+
+    chem lab report fri 5pm #life
+
+Birdbrain reads the line as you type and shows what it understood in chips under it:
+
+- **A day**: `today`, `tmr`, `fri`, `next tue`, `in 3 days`, `11/21`, `nov 21`. No day means today.
+- **A time**: `5pm`, `5:30p`, `17:00`, `noon`, `midnight`, `at 5`.
+- **A label**: `#life`, `#work`, `#appointment`, `#extracurricular` (the start is enough: `#app`).
+- **A class**: `@chem` finds your CHEM course.
+- **A type**: start with `quiz` or `exam` ("quiz ch 5 fri").
+
+Everything else is the title. If it reads a word you meant as plain text, press **Backspace** right after the
+word and it is handed back. **Ctrl+Enter** saves and stays open for the next one; **Esc** closes. You can fill in
+the rest (class, notes) later from the card's Details.
 
 ### Keys
 

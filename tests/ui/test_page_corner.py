@@ -38,7 +38,7 @@ class Corner(PageTest):
         self.page.locator("#open-menu").click()
         menu = self.page.locator("#app-menu")
         self.assertEqual(menu.locator("[role=menuitem]").all_inner_texts(),
-                         ["Add item\nN", "Settings\nS", "Scan now\nR", "Check for updates", "Quit Birdbrain"])
+                         ["Quick write\nSpace", "Add item\nN", "Settings\nS", "Scan now\nR", "Check for updates", "Quit Birdbrain"])
         menu.get_by_role("menuitem", name="Settings").click()
         self.page.locator("#settings").wait_for(state="visible")
         self.assertFalse(menu.is_visible())
@@ -47,7 +47,8 @@ class Corner(PageTest):
         self.page.keyboard.press("m")
         menu = self.page.locator("#app-menu")
         menu.wait_for(state="visible")
-        self.assertEqual(self.page.evaluate("document.activeElement.dataset.menu"), "add")
+        self.assertEqual(self.page.evaluate("document.activeElement.dataset.menu"), "quick")
+        self.page.keyboard.press("ArrowDown")
         self.page.keyboard.press("ArrowDown")
         self.page.keyboard.press("ArrowDown")
         self.assertEqual(self.page.evaluate("document.activeElement.dataset.menu"), "scan")

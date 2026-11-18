@@ -50,7 +50,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 
 - [x] 1. Personal items in the store, with a label; a 1.1.2 database opens and keeps everything
 - [x] 2. The reader for what a student types (`quickwrite.py`), with a table test of 60+ phrases
-- [ ] 3. Quick write in the window: Space, chips for what was understood, Enter, Ctrl+Enter, Esc, Backspace
+- [x] 3. Quick write in the window: Space, chips for what was understood, Enter, Ctrl+Enter, Esc, Backspace
 - [ ] 4. Space no longer ticks: X ticks, E opens details, ? shows every key; arrows and J/K across day groups
 - [ ] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
 - [ ] 6. System-wide hotkey on Windows (Ctrl+Alt+Space), changeable, with a small always-on-top quick write
@@ -69,3 +69,11 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   have the last word: "midterm review session" is not an exam. `#appointment` makes it an event, so it is never
   shown as overdue homework.
 - An unknown `#label`, or an `@class` that could be two courses, is left in the title rather than guessed.
+- What you type stays in the line as you typed it; the chips under it say how it was read. Backspace right after a
+  word that was read hands that word back as plain text (the next Backspace deletes as usual). This replaces "on an
+  empty line": the words never leave the line, so there is nothing to put back into it.
+- Your own items now record whether their time is real (`timed`), so "11:59pm" typed on purpose is shown, while
+  an item with only a day still shows none. Items made before 2.0 keep the old rule (11:59 PM meant no time).
+- A card with a label shows the label in place of the "Personal" tag.
+- Space opens quick write from anywhere outside a text field, including on a focused tick box or button; inside
+  the corner menu, Space presses the menu item as menus do.

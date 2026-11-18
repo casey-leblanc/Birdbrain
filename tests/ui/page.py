@@ -100,5 +100,9 @@ class PageTest(unittest.TestCase):
     def row(self, title: str):
         return self.page.locator(".row", has_text=title).first
 
+    def group_of(self, row) -> str:
+        """The day group a card sits under: "today", "tomorrow", "friday, nov 20", ..."""
+        return row.locator("xpath=ancestor::ul[1]/preceding-sibling::h3[1]").inner_text().strip().lower()
+
     def stored(self, item_id: str) -> Item:
         return self.store.get(item_id)

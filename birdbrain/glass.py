@@ -155,6 +155,8 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 .btn.primary:hover{background:#fff;color:#1C2230}
 .kind-name{font-weight:700;margin:0 0 12px}
 .in{font-size:.8125rem;color:var(--g-t2)}
+:root{--q-bg:var(--g-sheet);--q-fg:#fff;--q-line:var(--g-edge);--q-muted:var(--g-t2);--q-chip:rgba(255,255,255,.16)}
+.quick{-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 .menu{-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}   /* the list behind it stays out of the words */
 .banner{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 24px;
  border:1px solid var(--g-red);border-radius:8px;background:rgba(255,133,119,.16)}

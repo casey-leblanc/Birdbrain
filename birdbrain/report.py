@@ -172,7 +172,7 @@ def has_time(i: Item) -> bool:
     if "time not stated" in i.detail or i.id.startswith("moodle:page:") or i.source == "outlook-mail":
         return False
     if i.source == "manual":
-        return (i.due.hour, i.due.minute) != (23, 59)
+        return i.timed if i.timed is not None else (i.due.hour, i.due.minute) != (23, 59)
     if i.source == "outlook-calendar":
         return (i.due.hour, i.due.minute) != (0, 0)
     return True
@@ -236,14 +236,22 @@ def _due_words(i: Item, now: datetime) -> str:
 def _manual_fields(i: Item) -> str:
     """What the Edit form is pre-filled with, for items you added."""
     kind = (i.level or "exam") if i.kind == "test" else i.kind
-    no_time = (i.due.hour, i.due.minute) == (23, 59)
+    no_time = not has_time(i)
     return json.dumps({"title": i.title, "kind": kind, "date": i.due.date().isoformat(),
                        "time": "" if no_time else f"{i.due:%H:%M}", "course": i.course, "notes": i.detail,
                        "label": i.label})
 
 
+def _label(label_id: str, labels: dict | None) -> str:
+    """A label's tag: its name with a dot of its colour. Nothing for a label that has since been deleted."""
+    lab = (labels or {}).get(label_id)
+    if not lab:
+        return ""
+    return f'<span class="lab" data-label="{e(label_id)}" style="--lab:{e(lab["color"])}">{e(lab["name"])}</span>'
+
+
 def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
-         reason: str = "", done: bool = False, urgent: bool = False) -> str:
+         reason: str = "", done: bool = False, urgent: bool = False, labels: dict | None = None) -> str:
     code, title = course_code(i), display_title(i)
     level = None if (reason or done) else test_level(i)
     tip = ", ".join(x for x in (html.unescape(i.title), i.course, SOURCE.get(i.source, "")) if x)
@@ -255,7 +263,8 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
         meta += f'<span class="kind">{level}</span>'
         if (days := (i.due.date() - now.date()).days) >= 2 and i.due >= now:
             meta += f'<span class="in">in {days} days</span>'
-    meta += _code(code, courses)
+    meta += _code(code, courses) if not (i.label and code == "Personal") else ""   # a label says more than "Personal"
+    meta += _label(i.label, labels)
     meta += f'<time class="w{" late" if urgent else ""}" datetime="{i.due:%Y-%m-%dT%H:%M}">{e(_when(i, now, when))}</time>'
     if i.needs_review and not (reason or done):
         meta += '<span class="unsure" title="This date was read from text; double-check it">date unsure</span>'
@@ -339,12 +348,12 @@ def _day_clear(b: Board, now: datetime) -> str:
 
 
 def _column(c: Column, now: datetime, courses: dict, b: Board | None = None, settings: Settings | None = None,
-            scanned: bool = True) -> str:
+            scanned: bool = True, labels: dict | None = None) -> str:
     slug = re.sub(r"\W+", "-", c.title.lower())
     body = ""
     for g in c.groups:
         if g.items:
-            rows = "".join(_row(i, g.when, now, courses, kinds=c.kinds, urgent=g.urgent) for i in g.items)
+            rows = "".join(_row(i, g.when, now, courses, kinds=c.kinds, urgent=g.urgent, labels=labels) for i in g.items)
             due = f' data-due="{g.due}"' if g.due else ""
             label = f'<h3 class="grp{" urgent" if g.urgent else ""}"{due}>{e(g.label)}</h3>' if g.label else ""
             body += f"{label}<ul>{rows}</ul>"
@@ -373,7 +382,7 @@ def status_state(status: str, scanning: bool = False) -> str:
     return "idle" if QUIET.fullmatch(status.strip()) else "note"
 
 
-MENU = (("add", "Add item", "N"), ("settings", "Settings", "S"), ("scan", "Scan now", "R"),
+MENU = (("quick", "Quick write", "Space"), ("add", "Add item", "N"), ("settings", "Settings", "S"), ("scan", "Scan now", "R"),
         ("update", "Check for updates", ""), ("quit", "Quit Birdbrain", ""))
 
 
@@ -414,15 +423,15 @@ def _bin(kind: str, title: str, hint: str, rows: str, count: int, is_open: bool)
             f'<ul class="bin-grid">{rows}</ul></details>')
 
 
-def _bins(b: Board, settings: Settings, now: datetime, courses: dict, opened: dict) -> str:
+def _bins(b: Board, settings: Settings, now: datetime, courses: dict, opened: dict, labels: dict | None = None) -> str:
     out = ""
     if b.completed:
-        rows = "".join(_row(i, "date", now, courses, done=True) for i in b.completed)
+        rows = "".join(_row(i, "date", now, courses, done=True, labels=labels) for i in b.completed)
         out += _bin("completed", "Completed", "Items you've ticked off. Untick one to put it back.", rows,
                     len(b.completed), opened.get("completed", False))
     if b.archived:
         kws = ", ".join(f"“{e(k)}”" for k in settings.hidden_keywords) or "none yet"
-        rows = "".join(_row(h.item, "date", now, courses, reason=h.reason)
+        rows = "".join(_row(h.item, "date", now, courses, reason=h.reason, labels=labels)
                        for h in sorted(b.archived, key=lambda h: h.item.due))
         out += _bin("archived", "Archived", f"Duplicates, entries matching your hidden keywords ({kws}), and anything "
                     "you archived. Show any of them on your list again, or change keywords in Settings, under Keywords.",
@@ -449,13 +458,14 @@ def render_board(b: Board, settings: Settings, status: str, now: datetime, versi
     it has got. `sign_in` names the sites that need signing in to again."""
     prefs = prefs or prefs_mod.DEFAULTS
     courses = prefs["courses"]
+    labels = {x["id"]: x for x in prefs.get("labels", [])}
     # An empty list isn't "all clear" until a scan has looked (the first scan is always a full one).
     scanned = not status.lower().startswith(("not scanned", "full moodle scan"))
     return "".join([
         _tools(status, progress),
         _sign_in_card(sign_in),
-        '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned) for c in b.columns), "</main>",
-        _bins(b, settings, now, courses, prefs["bins"]),
+        '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned, labels) for c in b.columns), "</main>",
+        _bins(b, settings, now, courses, prefs["bins"], labels),
         # today-left: overdue plus due today, so the page can tell when you've ticked off the last of them
         f'<span id="board-meta" hidden data-version="{version}" data-today-left="{b.overdue + b.due_today}"></span>',
     ])
@@ -767,6 +777,16 @@ def _kind_dialog() -> str:
             'lead-in, such as “Biochemical Testing - …”), now and when new ones turn up.</p></div></dialog>')
 
 
+def _quick_dialog() -> str:
+    """Quick write: one line. What it understood shows as chips under the line as you type."""
+    return ('<dialog id="quick" class="quick" aria-label="Quick write"><form id="quick-form" novalidate>'
+            '<input id="quick-line" name="text" maxlength="300" autocomplete="off" spellcheck="false" enterkeyhint="done" '
+            'placeholder="lab report fri 5pm #life" aria-label="What do you need to do?" aria-describedby="quick-hint">'
+            '<p id="quick-chips" class="chips" aria-live="polite"></p>'
+            '<p id="quick-hint" class="quick-hint"><kbd>Enter</kbd> save<span> · </span><kbd>Ctrl</kbd><kbd>Enter</kbd> save and '
+            'add another<span> · </span><kbd>Esc</kbd> close</p></form></dialog>')
+
+
 def _grounds(p: dict) -> dict:
     """Each layout's ground colour, day and night, for the chosen themes: the photo's own colour behind Glass, the
     canvas in Focus. A layout switch crossfades through the new layout's ground."""
@@ -810,7 +830,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now)}{_kind_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now)}{_kind_dialog()}{_quick_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -957,6 +977,7 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
 .kind-name{font-weight:700;margin:0 0 12px}
 .kind-choices .btn[aria-pressed=true]{background:var(--struct);border-color:var(--struct);color:var(--col)}
 .in{font-size:.8125rem;color:var(--muted)}
+:root{--q-bg:var(--col);--q-fg:var(--text);--q-line:var(--line);--q-muted:var(--muted);--q-chip:var(--hover)}
 .banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 16px;margin-bottom:20px;
  border:1px solid var(--accent);border-radius:8px;background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .banner p{margin:0;flex:1 1 20rem}
@@ -1242,6 +1263,28 @@ TOOLS_CSS = """
  font-size:1rem;text-align:left;color:var(--menu-fg);background:none;border:0;border-radius:8px;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--menu-hover);outline:none}
 .menu kbd{font:inherit;font-size:.8125rem;opacity:.7}
+/* quick write: one line in the middle of the window, and chips for what was understood */
+.quick{width:min(640px,calc(100vw - 32px));margin:20vh auto auto;padding:0;border:1px solid var(--q-line);border-radius:14px;
+ background:var(--q-bg);color:var(--q-fg);box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:visible}
+.quick::backdrop{background:rgba(10,12,20,.32)}
+.quick[open]{animation:quick-in .16s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes quick-in{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
+#quick-form{display:grid;gap:10px;padding:18px 22px 14px}
+#quick-line{width:100%;font:inherit;font-size:1.375rem;font-weight:600;color:inherit;background:none;border:0;padding:4px 0;outline:none}
+#quick-line::placeholder{color:var(--q-muted);font-weight:400;opacity:.7}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin:0;font-size:.8125rem;color:var(--q-muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--q-chip);color:var(--q-fg);font-weight:600;
+ animation:chip-in .14s ease-out}
+.chip[data-what=day]::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.6}
+@keyframes chip-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+.quick-hint{margin:0;font-size:.75rem;color:var(--q-muted)}
+.quick-hint kbd{font:inherit;font-weight:600;padding:1px 5px;margin:0 2px 0 0;border:1px solid var(--q-line);border-radius:4px}
+.quick-hint span{opacity:.6}
+.lab{display:inline-flex;align-items:center;gap:5px;font-size:.8125rem;font-weight:600;white-space:nowrap}
+.lab::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--lab);flex:none}
+.row.landed{animation:landed 1.8s ease-out}
+@keyframes landed{0%{box-shadow:0 0 0 2px var(--q-fg)}100%{box-shadow:0 0 0 2px transparent}}
+@media (prefers-reduced-motion:reduce){.quick[open],.chip{animation:none}.row.landed{animation:none;outline:2px solid var(--q-fg)}}
 """
 
 MOTION_CSS = """
@@ -1772,7 +1815,7 @@ function closeMenu(focus){var m=menuParts();if(!m.box||m.box.hidden)return;m.box
   m.btn.setAttribute('aria-expanded','false');if(focus)m.btn.focus();}
 function openMenu(){var m=menuParts();if(!m.box)return;m.box.hidden=false;m.btn.setAttribute('aria-expanded','true');
   m.box.querySelector('[role=menuitem]').focus();}
-var MENU_DO={add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
+var MENU_DO={quick:function(){openQuick();},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
   update:function(){openSettings('app','updates-sec');document.getElementById('update-check').click();},
   quit:function(){quitNow();}};
 function wireMenu(){var m=menuParts();if(!m.btn)return;
@@ -1784,7 +1827,8 @@ function wireMenu(){var m=menuParts();if(!m.btn)return;
   m.box.addEventListener('keydown',function(ev){var its=[].slice.call(m.box.querySelectorAll('[role=menuitem]')),i=its.indexOf(document.activeElement),k=ev.key;
     if(k==='ArrowDown')its[(i+1)%its.length].focus();else if(k==='ArrowUp')its[(i-1+its.length)%its.length].focus();
     else if(k==='Home')its[0].focus();else if(k==='End')its[its.length-1].focus();
-    else if(k==='Escape'){closeMenu(true);}else if(k==='Tab'){closeMenu(false);return;}else return;
+    else if(k==='Escape'){closeMenu(true);}else if(k==='Tab'){closeMenu(false);return;}
+    else if(k===' '){if(document.activeElement)document.activeElement.click();}else return;   /* Space presses the item, as in any menu */
     ev.preventDefault();ev.stopPropagation();});}
 document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.tools'))closeMenu(false);});
 function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
@@ -1802,7 +1846,7 @@ function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
   var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
   if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
   else bar.removeAttribute('aria-valuenow');}
-function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||quick.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
   var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
 function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
@@ -1814,7 +1858,7 @@ function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   .catch(function(){pollT=setTimeout(watchStatus,20000);});}
 /* Single-key shortcuts (N, S, R, ?): only while no window is open and you aren't typing, and never with Ctrl or Alt */
 var SHORTCUTS={n:function(){if(LIVE)openItemForm(null,null);},s:function(){openSettings();},
-  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},j:function(){focusRow(listRows()[0]);},'?':function(){openSettings('app','keys-sec');}};
+  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},j:function(){focusRow(listRows()[0]);},'?':function(){openSettings('app','keys-sec');}};
 /* On an item: ↓/J and ↑/K to the next and previous item (through the columns, then any open bin), ←/→ to the first item
    of the column beside, O (or Enter on its tick box) opens it, A archives it or shows it again, E edits one you added. */
 function listRows(){return [].slice.call(wrap.querySelectorAll('.row[data-id]')).filter(function(r){return r.offsetParent!==null;});}
@@ -1847,6 +1891,35 @@ function closeSheet(d){if(!d.open||d.classList.contains('closing'))return;
   d.classList.add('closing');
   d.addEventListener('animationend',function h(ev){if(ev.target!==d)return;d.removeEventListener('animationend',h);done();});
   setTimeout(done,400);}   /* in case the animation never runs */
+/* Quick write: Space opens one line. The app reads it as you type and says, in chips under the line, what it
+   understood. Enter saves; Ctrl+Enter saves and stays for another; Backspace right after a word it read hands that
+   word back as plain text. */
+var quick=document.getElementById('quick'),qLine=document.getElementById('quick-line'),qChips=document.getElementById('quick-chips'),
+  qSkip=[],qSeq=0,qRead=null,Q_EMPTY={chips:[{what:'day',text:'',says:'Today'}]};
+function paintChips(r){qRead=r;qChips.textContent='';(r.chips||[]).forEach(function(c){var s=document.createElement('span');
+  s.className='chip';s.dataset.what=c.what;s.textContent=c.says;qChips.appendChild(s);});}
+function openQuick(){if(!LIVE||document.querySelector('dialog[open]'))return;closeMenu(false);
+  qSkip=[];qLine.value='';paintChips(Q_EMPTY);quick.showModal();qLine.focus();}
+function readQuick(){var n=++qSeq;return api('/api/quick',{text:qLine.value,skip:qSkip}).then(function(r){if(n===qSeq)paintChips(r);return r;})
+  .catch(function(){});}
+function landed(r){var row=inList(r.id),undo=function(){api('/api/items/delete',{id:r.id}).then(function(){return refreshBoard();})
+    .then(function(){toast('Removed “'+r.title+'”');}).catch(function(e){toast("Couldn't undo: "+e.message);});};
+  if(row){row.classList.add('landed');row.scrollIntoView({block:'nearest'});setTimeout(function(){row.classList.remove('landed');},1800);}
+  toast('Added “'+r.title+'” for '+r.day.toLowerCase().replace(/^([a-z]+day)/,function(d){return d.charAt(0).toUpperCase()+d.slice(1);})
+    +(row?'':'. It will show on your list when it is closer.'),undo);}
+function saveQuick(stay){if(!qLine.value.trim())return;++qSeq;
+  api('/api/quick',{text:qLine.value,skip:qSkip,save:true}).then(function(r){
+    if(stay){qSkip=[];qLine.value='';paintChips(Q_EMPTY);}else quick.close();
+    return refreshBoard(stay?{}:{id:r.id,part:'.tick'}).then(function(){landed(r);if(stay)qLine.focus();});})
+  .catch(function(e){qChips.textContent=e.message;});}
+qLine.addEventListener('input',readQuick);
+qLine.addEventListener('keydown',function(ev){
+  if(ev.key==='Enter'){ev.preventDefault();saveQuick(ev.ctrlKey||ev.metaKey);return;}
+  if(ev.key==='Backspace'&&qRead&&qLine.selectionStart===qLine.selectionEnd){var at=qLine.selectionStart,
+    c=(qRead.chips||[]).filter(function(c){return c.text&&c.end===at;})[0];
+    if(c){ev.preventDefault();qSkip.push(c.text.toLowerCase());readQuick();}}});
+document.getElementById('quick-form').addEventListener('submit',function(ev){ev.preventDefault();});
+quick.addEventListener('click',function(ev){if(ev.target===quick)quick.close();});
 (function(){var msg=document.getElementById('update-msg'),go=document.getElementById('update-go');
   function show(r){msg.textContent=r.message;go.hidden=!(r.available&&r.packaged);
     if(r.available)go.textContent='Update to '+r.available+' and restart';}

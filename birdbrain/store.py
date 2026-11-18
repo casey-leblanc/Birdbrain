@@ -57,13 +57,15 @@ class Item:
     level: str = ""            # exam | quiz for tests you added yourself
     done_at: datetime | None = None
     label: str = ""            # for your own items: "life", "work", ... (the label's id; prefs holds its name and colour)
+    timed: bool | None = None  # for your own items: whether the time of day is a real one. None: made before 2.0,
+                               # when 11:59 PM stood for "no time" (report.has_time)
 
 
 def text_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8", "ignore")).hexdigest()
 
 
-_COLUMNS = "id, source, kind, title, due, course, url, detail, confidence, needs_review, level, done_at, label"
+_COLUMNS = "id, source, kind, title, due, course, url, detail, confidence, needs_review, level, done_at, label, timed"
 LABEL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")   # what a label's id looks like
 
 
@@ -95,6 +97,8 @@ class Store:
                 self._db.execute("ALTER TABLE items ADD COLUMN done_at TEXT")
             if "label" not in have:   # 2.0: labels for your own items
                 self._db.execute("ALTER TABLE items ADD COLUMN label TEXT DEFAULT ''")
+            if "timed" not in have:   # 2.0: "due at 11:59 PM" and "no time" are told apart for your own items
+                self._db.execute("ALTER TABLE items ADD COLUMN timed INTEGER")
 
     def _changed(self) -> None:
         self.version += 1
@@ -167,17 +171,19 @@ class Store:
             if exists:
                 self._db.execute(
                     """UPDATE items SET source=?, kind=?, title=?, due=?, course=?, url=?,
-                       detail=?, confidence=?, needs_review=?, level=?, label=?, last_seen=? WHERE id=?""",
+                       detail=?, confidence=?, needs_review=?, level=?, label=?, timed=?, last_seen=? WHERE id=?""",
                     (item.source, item.kind, item.title, due, item.course, item.url,
-                     item.detail, item.confidence, int(item.needs_review), item.level, item.label, now, item.id),
+                     item.detail, item.confidence, int(item.needs_review), item.level, item.label,
+                     None if item.timed is None else int(item.timed), now, item.id),
                 )
             else:
                 self._db.execute(
                     """INSERT INTO items (id, source, kind, title, due, course, url, detail, confidence,
-                       needs_review, level, done_at, label, first_seen, last_seen)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)""",
+                       needs_review, level, done_at, label, timed, first_seen, last_seen)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,?)""",
                     (item.id, item.source, item.kind, item.title, due, item.course, item.url,
-                     item.detail, item.confidence, int(item.needs_review), item.level, item.label, now, now),
+                     item.detail, item.confidence, int(item.needs_review), item.level, item.label,
+                     None if item.timed is None else int(item.timed), now, now),
                 )
         self._changed()
         return not exists
@@ -255,4 +261,5 @@ class Store:
 
 def _item(r) -> Item:
     return Item(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4]) if r[4] else None, r[5], r[6], r[7],
-                r[8], bool(r[9]), r[10] or "", datetime.fromisoformat(r[11]) if r[11] else None, r[12] or "")
+                r[8], bool(r[9]), r[10] or "", datetime.fromisoformat(r[11]) if r[11] else None, r[12] or "",
+                None if r[13] is None else bool(r[13]))
