@@ -137,7 +137,8 @@ turn it off in Settings › App. If another program already uses it, Settings sa
 ## Settings
 
 - **Look**: Glass (frosted panels over a photo of the sky) or Focus (a calm page with nothing but your list), a
-  theme for each, day or night, or follow Windows. **Custom** lets you use your own photos (Glass) or colours
+  theme for each, day or night, or follow Windows. **Motion** is Full, Subtle or Off; until you choose, it follows
+  your system's reduce-motion setting. **Custom** lets you use your own photos (Glass) or colours
   (Focus); Birdbrain keeps the words readable on whatever you pick.
 - **Scanning**: Scan now; a full rescan of Moodle; your Moodle and Outlook addresses; Gradescope and McGraw Hill
   Connect on or off; sign in again; and "Scan back to", which reads older emails back to a date you pick.

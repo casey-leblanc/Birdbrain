@@ -97,3 +97,28 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - The keyboard-only test listens for any mouse event on the page and fails if one happens. It times the page's own
   share (opening the line, and saving and showing the card) and requires under a second in total; a second test
   types at about forty words a minute and requires Space-to-saved in under five seconds.
+
+## 3. Drag and motion
+
+- [x] 1. One motion vocabulary (`motion.py`): shared timings and a spring, three levels, only transform and opacity
+- [ ] 2. Dragging with pointer events: pick up, lift, follow, neighbours part, spring into place, Esc, edge scroll
+- [ ] 3. Where a card can go: reorder in its day, Completed, Archived, an earlier day; a refused drop says why
+- [ ] 4. Undo after every drop, and Ctrl+Z
+- [ ] 5. The same with the keyboard: M, arrows, Enter, Esc, D, A, and what a screen reader hears
+- [ ] 6. Glass: ripple of light, sheen, the tick, the drop-in, smooth re-flow; Subtle drops ripple and sheen
+- [ ] 7. Focus: the same feedback, quieter
+- [ ] 8. Smooth with 200 cards: no long frame, no layout work in the drag loop
+- [ ] 9. UI tests with real pointer events for items 2 to 5
+- [ ] 10. A screen recording for the owner, in Glass night and Focus day, with motion on and off
+
+### Decisions
+
+- The level in force is on the page as `data-motion`. With nothing chosen it follows the system (reduce motion
+  means Off); a level chosen in Settings wins over the system either way.
+- Hover colours no longer fade: only transform and opacity are animated anywhere, in styles and in script. The
+  scan bar fills by scaling, the "just added" mark fades an outline drawn once, and a bin opens to its full height
+  at once while what is inside fades and slides in.
+- Loops and marks that set their own pace (the bird's wings, the scanning dot, the scan bar, the bin's pulse, the
+  "just added" mark) keep their own times; everything else uses the five shared ones.
+- The spring is worked out from a damped spring (about 5% past, then settled) and written as CSS `linear()`;
+  Safari 16 and anything else without `linear()` gets a `cubic-bezier` with a little overshoot.

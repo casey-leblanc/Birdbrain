@@ -28,6 +28,7 @@ from datetime import datetime, timedelta
 import custom
 import filters
 import glass
+import motion
 import prefs as prefs_mod
 import theme
 from config import REPORT_PATH, Settings
@@ -698,6 +699,11 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
                       for v, label in theme.LAYOUT_NAMES.items())
     frames = "".join(f'<label><input type="radio" name="frame" value="{v}"><span>{label}</span></label>'
                      for v, label in (("wide", "Full width"), ("narrow", "Narrow, more photo")))
+    levels = "".join(f'<label title="{e(motion.LEVEL_HINTS[v])}"><input type="radio" name="motion" value="{v}">'
+                     f'<span>{motion.LEVEL_NAMES[v]}</span></label>' for v in motion.LEVELS)
+    motion_choice = ('<h4 class="sub">Motion</h4>'
+                     f'<div class="seg motion" role="radiogroup" aria-label="Motion">{levels}</div>'
+                     '<p class="hint" id="motion-hint" aria-live="polite"></p>')
     frame_choice = ('<h4 class="sub">Frame</h4>'
                     f'<div class="seg frame" role="radiogroup" aria-label="Frame">{frames}</div>') if glass_layout else ""
     rows = "".join(
@@ -723,7 +729,7 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         f'<div class="set-sec"><h3>Layout</h3><div class="seg layout" role="radiogroup" aria-label="Layout">{layouts}</div>'
         '<p class="hint">Glass sets your list on frosted panels overlooking the open sky. Focus is a calm, roomy page with '
         'nothing but your list. Each has its own themes, and a Custom one you make yourself.</p>'
-        f'{frame_choice}</div>'
+        f'{frame_choice}{motion_choice}</div>'
         '<div class="set-sec"><h3>Theme</h3>'
         f'<div class="themes" role="radiogroup" aria-label="Theme">{_theme_options(layout, photo, p)}</div>'
         f'{_custom_panel(layout, photo, p)}'
@@ -871,7 +877,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
                "r.dataset.mode=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';"
                # arriving from a layout switch (or the welcome page): start under the veil, which then lifts
                "try{var a=sessionStorage.getItem('bb-arrive');if(a!==null){sessionStorage.removeItem('bb-arrive');"
-               "if(!matchMedia('(prefers-reduced-motion: reduce)').matches){r.classList.add('arriving');r.style.setProperty('--arrive',a||'transparent');}}}catch(e){}")
+               "if(r.dataset.motion!=='off'){r.classList.add('arriving');r.style.setProperty('--arrive',a||'transparent');}}}catch(e){}")
     layout = prefs["layout"]
     glass_layout = layout == "glass"
     # Photos come from Birdbrain's own server on the live page, and straight from disk in the read-only copy.
@@ -879,16 +885,16 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
     page_data = json.dumps({"prefs": prefs, "themes": list(prefs_mod.GLASS_THEMES if glass_layout else prefs_mod.FOCUS_THEMES),
                             "modes": list(theme.MODES), "grounds": _grounds(prefs),
                             "keywords": keyword_counts(b, settings.hidden_keywords), "wing": WING,
-                            "label_notes": prefs_mod.label_notes(prefs)})
+                            "label_notes": prefs_mod.label_notes(prefs), "motion_hints": motion.LEVEL_HINTS})
     page_data = page_data.replace("</", "<\\/")   # can't close the <script> early
     return "".join([
         f'<!doctype html><html lang="en"{' class="app-window"' if app_window and token else ''} data-frame="{e(prefs["frame"])}" data-layout="{e(layout)}" data-theme="{e(prefs_mod.active_theme(prefs))}" data-mode="{mode}" '
-        f'data-mode-pref="{e(prefs["mode"])}">'
+        f'data-mode-pref="{e(prefs["mode"])}" data-motion-pref="{e(prefs.get("motion", ""))}">'
         '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
-        f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{head_js}</script>",
+        f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{motion.HEAD_JS}{head_js}</script>",
         f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
-        f"{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}</style>",
+        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
@@ -935,11 +941,11 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
                        "mode": prefs["mode"]}).replace("</", "<\\/")
     return "".join([
         f'<!doctype html><html lang="en"{" class=\"app-window\"" if app_window and token else ""} data-layout="{e(prefs["layout"])}" '
-        f'data-theme="{e(prefs_mod.active_theme(prefs))}" data-mode="{mode}" data-mode-pref="{e(prefs["mode"])}">',
+        f'data-theme="{e(prefs_mod.active_theme(prefs))}" data-mode="{mode}" data-mode-pref="{e(prefs["mode"])}" data-motion-pref="{e(prefs.get("motion", ""))}">',
         '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
         f'<meta name="birdbrain-token" content="{e(token)}">',
-        f"<title>Welcome to Birdbrain</title><script>{head_js}</script>",
-        f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo)}{TITLEBAR_CSS}{SCROLL_CSS}{SETUP_CSS}</style></head>",
+        f"<title>Welcome to Birdbrain</title><script>{motion.HEAD_JS}{head_js}</script>",
+        f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo)}{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{SETUP_CSS}</style></head>",
         '<body class="live"><main class="setup">',
         '<p class="steps" aria-hidden="true"><span class="step-n">Step 1 of 2</span></p>',
         '<section id="step-connect" aria-labelledby="setup-title">',
@@ -1052,10 +1058,10 @@ def render_quick(token: str, prefs: dict | None = None) -> str:
     head_js = ("var r=document.documentElement;if(r.dataset.modePref==='system')"
                "r.dataset.mode=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';")
     return "".join([
-        f'<!doctype html><html lang="en" data-mode="{mode}" data-mode-pref="{e(prefs["mode"])}">',
+        f'<!doctype html><html lang="en" data-mode="{mode}" data-mode-pref="{e(prefs["mode"])}" data-motion-pref="{e(prefs.get("motion", ""))}">',
         '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
-        f'<meta name="birdbrain-token" content="{e(token)}"><title>Quick write</title><script>{head_js}</script>',
-        f"<style>{theme.font_face_css()}{QUICK_PAGE_CSS}</style></head><body>",
+        f'<meta name="birdbrain-token" content="{e(token)}"><title>Quick write</title><script>{motion.HEAD_JS}{head_js}</script>',
+        f"<style>{theme.font_face_css()}{motion.TOKENS_CSS}{QUICK_PAGE_CSS}</style></head><body>",
         '<form id="quick-form" novalidate>'
         '<input id="quick-line" name="text" maxlength="300" autocomplete="off" spellcheck="false" enterkeyhint="done" '
         'placeholder="lab report fri 5pm #life" aria-label="What do you need to do?" aria-describedby="quick-hint">'
@@ -1099,7 +1105,7 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
 .act:hover{color:var(--text)}
 .act.del,.act.label-del{color:var(--accent)}
 .btn{font:inherit;font-weight:600;min-height:44px;padding:0 20px;color:var(--struct);background:none;border:1px solid var(--line);border-radius:8px;cursor:pointer;
- transition:border-color .15s,background-color .15s}
+ transition:none}
 .btn:hover{border-color:var(--struct);background:var(--hover)}
 .btn.primary{background:var(--struct);border-color:var(--struct);color:var(--col)}
 .btn.primary:hover{background:color-mix(in srgb,var(--struct) 86%,var(--text))}
@@ -1143,7 +1149,7 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
 
 /* items: space between them, not lines; a soft wash under the pointer */
 .row{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:6px;align-items:start;padding:10px 12px 10px 4px;margin:0 -12px 0 -4px;
- border-radius:8px;transition:background-color .15s ease-out}
+ border-radius:8px;transition:none}
 .row:hover{background:var(--hover)}
 .tickwrap{display:grid;place-items:center;width:44px;height:44px;margin:-11px -6px -11px -8px;cursor:pointer}
 .tick{appearance:none;width:18px;height:18px;margin:0;border:1.5px solid var(--muted);border-radius:4px;display:grid;place-items:center;cursor:pointer;background:none}
@@ -1173,12 +1179,12 @@ a.t:hover{text-decoration-style:solid;text-decoration-color:currentColor}
 .unsure{font-style:italic}
 .row.past .t,.row.past .w{color:var(--muted)}
 .row.is-done .t{color:var(--muted);text-decoration:line-through;font-weight:400}
-.row.leaving{opacity:0;transform:translateX(6px);transition:opacity .18s ease-in,transform .18s ease-in}
+.row.leaving{opacity:0;transform:translateX(6px);transition:opacity var(--m-base) var(--m-in),transform var(--m-base) var(--m-in)}
 .detail{font-size:.8125rem;color:var(--muted);margin-top:6px;max-width:36rem;overflow-wrap:anywhere}
 .acts{display:inline-flex;gap:4px;margin-left:4px}
 /* Archive: on every open item, shown under the pointer or while the row has keyboard focus (always, on touch) */
 .act.arch{margin-left:auto}
-.act.arch,.act.whatis{opacity:0;transition:opacity .15s ease-out}
+.act.arch,.act.whatis{opacity:0;transition:opacity var(--m-fast) var(--m-out)}
 .row:hover .act.arch,.row:focus-within .act.arch,.row:hover .act.whatis,.row:focus-within .act.whatis{opacity:1}
 @media (hover:none){.act.arch,.act.whatis{opacity:1}}
 .kw-msg:empty{display:none}
@@ -1229,7 +1235,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 .bin[open] .state::after{content:"Hide"}
 .bin summary:hover .state{color:var(--text)}
 .bin summary.pulse .bin-title{animation:pulse 1s ease-out}
-@keyframes pulse{from{color:var(--accent)}}
+@keyframes pulse{from{transform:scale(1.35)}}
 .hint{font-size:.8125rem;color:var(--muted);margin:4px 0 16px;max-width:40rem}
 /* each bin opens in place, down its own column, so opening one never moves the other */
 .bin-grid{display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
@@ -1239,7 +1245,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 /* dialogs: a plain sheet */
 .sheet-dialog{width:min(640px,calc(100vw - 32px));max-height:min(88vh,960px);padding:0;border:1px solid var(--line);border-radius:12px;background:var(--col);color:var(--text)}
 .sheet-dialog::backdrop{background:rgba(10,12,20,.4)}
-.sheet-dialog[open]{animation:sheet-in .2s ease-out}
+.sheet-dialog[open]{animation:sheet-in var(--m-base) var(--m-out)}
 @keyframes sheet-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .sheet{padding:32px 36px 36px;margin:0}
 .sheet-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px}
@@ -1251,7 +1257,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 #settings .sheet-head{padding:28px 36px 12px;margin:0}
 .tabs{flex:none;display:flex;gap:4px;padding:0 26px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
 .tab{font:inherit;font-size:1rem;font-weight:600;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;
- padding:0 10px;min-height:44px;min-width:44px;cursor:pointer;white-space:nowrap;transition:color .15s}
+ padding:0 10px;min-height:44px;min-width:44px;cursor:pointer;white-space:nowrap;transition:none}
 .tab:hover{color:var(--text)}
 .tab[aria-selected=true]{color:var(--text);border-bottom-color:var(--struct)}
 .tab:focus-visible{outline:2px solid var(--focus);outline-offset:-6px;border-radius:8px}
@@ -1334,7 +1340,7 @@ fieldset.field{border:0;padding:0;margin:0 0 16px}
 .reset:disabled{opacity:.45;cursor:default;text-decoration:none}
 .courses .warn{grid-area:warn;font-size:.8125rem;color:var(--accent);margin-top:2px}.courses .warn:empty{display:none}
 #toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,10px);max-width:calc(100vw - 32px);padding:12px 18px;border-radius:10px;background:var(--text);color:var(--bg);font-weight:600;
- opacity:0;pointer-events:none;transition:opacity .2s ease-out,transform .2s ease-out}
+ opacity:0;pointer-events:none;transition:opacity var(--m-base) var(--m-out),transform var(--m-base) var(--m-out)}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 #toast.has-action.show{pointer-events:auto;display:flex;align-items:center;gap:16px}
 .toast-undo{font:inherit;font-weight:700;color:var(--bg);background:none;border:1px solid var(--bg);border-radius:6px;min-height:32px;padding:0 12px;cursor:pointer}
@@ -1345,25 +1351,23 @@ fieldset.field{border:0;padding:0;margin:0 0 16px}
 #settings{height:calc(100vh - 32px)}#settings .sheet-head{padding:20px 20px 8px}.tabs{padding:0 10px;gap:0;justify-content:space-between}.tab{padding:0 5px}.pane{padding:0 20px 24px}
 .courses li{grid-template-columns:32px 1fr auto;grid-template-areas:"color code reset" ". nick nick" ". warn warn";row-gap:6px}}
 .no-anim *{transition:none!important}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 """
 
 TITLEBAR_CSS = """
 /* the app window's own title bar (appwindow.py removes Windows' one): see-through, frosted once you scroll */
 .titlebar{display:none}
-.app-window .titlebar{display:flex;position:fixed;top:0;left:0;right:0;height:32px;z-index:40;user-select:none;-webkit-user-select:none;background:var(--tb-bg,transparent);transition:background-color .2s ease-out}
+.app-window .titlebar{display:flex;position:fixed;top:0;left:0;right:0;height:32px;z-index:40;user-select:none;-webkit-user-select:none;background:var(--tb-bg,transparent);transition:none}
 .app-window.scrolled .titlebar{background:var(--tb-scrolled);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 .titlebar .drag{flex:1}
 .titlebar .edge{position:absolute;top:0;left:0;right:0;height:5px;cursor:n-resize;z-index:1}
 .titlebar .edge[data-edge=top]{right:138px}   /* leaves the window buttons their full height */
 .titlebar .edge.l,.titlebar .edge.r{width:10px}.titlebar .edge.l{cursor:nw-resize}.titlebar .edge.r{left:auto;cursor:ne-resize}
 .maximized .titlebar .edge{display:none}
-.win-btn{width:46px;height:32px;border:0;border-radius:0;padding:0;background:transparent;color:var(--tb-fg);text-shadow:var(--tb-shadow,none);font:10px/1 "Segoe Fluent Icons","Segoe MDL2 Assets",sans-serif;display:grid;place-items:center;cursor:default;transition:background-color .1s}
+.win-btn{width:46px;height:32px;border:0;border-radius:0;padding:0;background:transparent;color:var(--tb-fg);text-shadow:var(--tb-shadow,none);font:10px/1 "Segoe Fluent Icons","Segoe MDL2 Assets",sans-serif;display:grid;place-items:center;cursor:default;transition:none}
 .win-btn:hover{background:var(--tb-hover)}
 .win-btn.close:hover{background:#C42B1C;color:#FFFFFF}
 .win-btn:focus-visible{outline:2px solid currentColor;outline-offset:-4px;border-radius:0}
 .win-btn .res{display:none}.maximized .win-btn .max{display:none}.maximized .win-btn .res{display:inline}
-@media (prefers-reduced-motion:reduce){.titlebar,.win-btn{transition:none}}
 """
 
 TOOLS_CSS = """
@@ -1372,7 +1376,7 @@ TOOLS_CSS = """
  max-width:calc(100% - 2 * var(--tools-right))}
 .status{display:flex;align-items:center;gap:8px;min-width:36px;min-height:36px;padding:0 13px;font:inherit;font-size:.8125rem;
  color:var(--tool-fg);background:none;border:0;border-radius:18px;cursor:pointer;overflow:hidden}
-.status .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--dot-idle);transition:background-color .2s}
+.status .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--dot-idle);transition:none}
 .status .st{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .status.scanning .st,.status.problem .st,.status.note .st,.status:hover .st,.status:focus-visible .st{display:inline}
 .status.scanning .dot{background:var(--dot-busy);animation:dot-breathe 1.6s ease-in-out infinite}
@@ -1382,7 +1386,6 @@ TOOLS_CSS = """
 .status .scan-bar{flex:none;width:56px;margin-left:0}
 .status:hover,.menu-btn:hover,.menu-btn[aria-expanded=true]{background:var(--tool-hover)}
 @keyframes dot-breathe{0%,100%{transform:scale(.8);opacity:.6}50%{transform:scale(1.3);opacity:1}}
-@media (prefers-reduced-motion:reduce){.status.scanning .dot{animation:none}}
 .menu-btn{flex:none;display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:50%;background:none;
  color:var(--tool-fg);cursor:pointer}
 .menu-btn svg{fill:currentColor}
@@ -1399,14 +1402,14 @@ TOOLS_CSS = """
 .quick{width:min(640px,calc(100vw - 32px));margin:20vh auto auto;padding:0;border:1px solid var(--q-line);border-radius:14px;
  background:var(--q-bg);color:var(--q-fg);box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:visible}
 .quick::backdrop{background:rgba(10,12,20,.32)}
-.quick[open]{animation:quick-in .16s cubic-bezier(.2,.9,.3,1.2)}
+.quick[open]{animation:quick-in var(--m-spring-time) var(--m-spring)}
 @keyframes quick-in{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
 #quick-form{display:grid;gap:10px;padding:18px 22px 14px}
 #quick-line{width:100%;font:inherit;font-size:1.375rem;font-weight:600;color:inherit;background:none;border:0;padding:4px 0;outline:none}
 #quick-line::placeholder{color:var(--q-muted);font-weight:400;opacity:.7}
 .chips{display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin:0;font-size:.8125rem;color:var(--q-muted)}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--q-chip);color:var(--q-fg);font-weight:600;
- animation:chip-in .14s ease-out}
+ animation:chip-in var(--m-fast) var(--m-out)}
 .chip[data-what=day]::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.6}
 @keyframes chip-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
 .quick-hint{margin:0;font-size:.75rem;color:var(--q-muted)}
@@ -1421,9 +1424,10 @@ TOOLS_CSS = """
  color:var(--tool-fg);background:var(--tool-hover);border:1px solid color-mix(in srgb,currentColor 35%,transparent);white-space:nowrap}
 .labels li{grid-template-columns:32px 1fr auto;grid-template-areas:"color nick reset" ". warn warn"}
 #label-form input[type=color]{width:44px;height:44px;padding:8px;border:0;background:none;cursor:pointer}
-.row.landed{animation:landed 1.8s ease-out}
-@keyframes landed{0%{box-shadow:0 0 0 2px var(--q-fg)}100%{box-shadow:0 0 0 2px transparent}}
-@media (prefers-reduced-motion:reduce){.quick[open],.chip{animation:none}.row.landed{animation:none;outline:2px solid var(--q-fg)}}
+.row.landed{position:relative}
+.row.landed::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 2px var(--q-fg);pointer-events:none;animation:landed 1.8s var(--m-out) forwards}
+@keyframes landed{from{opacity:1}to{opacity:0}}
+:root[data-motion=off] .row.landed{outline:2px solid var(--q-fg)}
 """
 
 MOTION_CSS = """
@@ -1431,25 +1435,25 @@ MOTION_CSS = """
    it has got (an inbox scan) sends a short band along it instead. Each layout sets its colours. */
 .scan-bar{display:inline-block;vertical-align:middle;width:min(160px,32vw);height:6px;margin-left:10px;border-radius:3px;overflow:hidden;
  background:var(--bar-track,color-mix(in srgb,var(--struct) 20%,transparent))}
-.scan-bar i{display:block;height:100%;width:calc(var(--p,0) * 100%);border-radius:inherit;background:var(--bar-fill,var(--struct));
- transition:width .6s cubic-bezier(.4,0,.2,1)}
-.scan-bar.busy i{width:35%;animation:scan-busy 1.4s cubic-bezier(.4,0,.2,1) infinite}
+.scan-bar i{display:block;height:100%;width:100%;transform-origin:left;transform:scaleX(var(--p,0));border-radius:inherit;background:var(--bar-fill,var(--struct));
+ transition:transform var(--m-long) var(--m-move)}
+.scan-bar.busy i{width:35%;transform:none;animation:scan-busy 1.4s var(--m-move) infinite}
 @keyframes scan-busy{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
-@media (prefers-reduced-motion:reduce){.scan-bar i{transition:none}.scan-bar.busy i{animation:none;width:100%;opacity:.45}}
+:root[data-motion=off] .scan-bar.busy i{transform:none;opacity:.45}
 /* motion shared by both layouts: sheets closing, and the veil a layout switch crossfades through */
-.sheet-dialog[open]::backdrop{animation:veil-in .2s ease-out}
-.sheet-dialog[open].closing{animation:sheet-out .16s cubic-bezier(.4,0,1,1) forwards}
-.sheet-dialog.closing::backdrop{animation:veil-fade .16s ease-in forwards}
+.sheet-dialog[open]::backdrop{animation:veil-in var(--m-base) var(--m-out)}
+.sheet-dialog[open].closing{animation:sheet-out var(--m-fast) var(--m-in) forwards}
+.sheet-dialog.closing::backdrop{animation:veil-fade var(--m-fast) var(--m-in) forwards}
 @keyframes sheet-out{to{opacity:0;transform:translateY(8px) scale(.985)}}
 @keyframes veil-in{from{opacity:0}}
 @keyframes veil-fade{to{opacity:0}}
 .veil{position:fixed;inset:0;z-index:39;pointer-events:none;opacity:0}   /* under the window's own title bar (40) */
 html.arriving::after{content:"";position:fixed;inset:0;z-index:39;pointer-events:none;background:var(--arrive);
- animation:veil-lift .55s cubic-bezier(.16,1,.3,1) .06s forwards}
-html.arriving .wrap{animation:arrive .6s cubic-bezier(.16,1,.3,1) .04s both}
+ animation:veil-lift var(--m-long) var(--m-out) .06s forwards}
+html.arriving .wrap{animation:arrive var(--m-long) var(--m-out) .04s both}
 @keyframes veil-lift{to{opacity:0}}
 @keyframes arrive{from{opacity:0;transform:translateY(12px)}}
-@media (prefers-reduced-motion:reduce){html.arriving::after{display:none}}
+:root[data-motion=off].arriving::after{display:none}
 /* a bin opening or closing: clipped while it grows or folds, and "Show" as soon as it starts to close */
 .bin.moving{overflow:hidden}
 .bin.closing .state::after{content:"Show"}
@@ -1461,15 +1465,14 @@ SCROLL_CSS = """
 html{scrollbar-width:none}html::-webkit-scrollbar{display:none}
 .gscroll{display:none;position:fixed;top:8px;bottom:8px;right:4px;width:10px;z-index:45;border-radius:999px;
  background:var(--sb-track);border:1px solid var(--sb-track-edge);-webkit-backdrop-filter:var(--sb-blur);backdrop-filter:var(--sb-blur);
- opacity:.6;transform-origin:right center;transition:opacity .25s ease-out,transform .15s ease-out}
+ opacity:.6;transform-origin:right center;transition:opacity var(--m-base) var(--m-out),transform var(--m-fast) var(--m-out)}
 .app-window .gscroll{top:38px}
 .gscroll.on{display:block}
 .gscroll.moving,.gscroll:hover,.gscroll.active{opacity:1}
 .gscroll:hover,.gscroll.active{transform:scaleX(1.4)}
 .gscroll i{position:absolute;left:1px;right:1px;top:0;border-radius:999px;background:var(--sb-thumb);border:1px solid var(--sb-thumb-edge);
- box-shadow:var(--sb-bevel);-webkit-backdrop-filter:var(--sb-blur);backdrop-filter:var(--sb-blur);transition:background-color .15s}
+ box-shadow:var(--sb-bevel);-webkit-backdrop-filter:var(--sb-blur);backdrop-filter:var(--sb-blur);transition:none}
 .gscroll i:hover,.gscroll.active i{background:var(--sb-thumb-hover)}
-@media (prefers-reduced-motion:reduce){.gscroll,.gscroll i{transition:none}}
 """
 
 SETUP_CSS = """
@@ -1494,7 +1497,7 @@ SETUP_CSS = """
 /* step 2: Glass or Focus, then a theme */
 .layout-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:12px}
 .lp{position:relative;display:grid;gap:4px;padding:12px 12px 14px;border:1px solid var(--g-line);border-radius:10px;cursor:pointer;
- transition:border-color .15s,background-color .15s}
+ transition:none}
 .lp input{position:absolute;opacity:0;pointer-events:none}
 .lp:hover{background:rgba(255,255,255,.06)}
 .lp:has(input:checked){border-color:var(--g-t1);box-shadow:inset 0 0 0 1px var(--g-t1)}
@@ -1537,7 +1540,7 @@ SETUP_CSS = """
 @media (max-width:560px){.setup,[data-layout=focus] .setup{padding:22px 18px}.setup h1,.look-title{font-size:2rem}}
 """
 
-SETUP_JS = """(function(){
+SETUP_JS = """(function(){/*MOTION*/
 var root=document.documentElement,form=document.getElementById('setup-form'),err=form.querySelector('.form-error'),f=form.elements,
     TOKEN=document.querySelector('meta[name="birdbrain-token"]').content,
     SITES={school:'https://outlook.office.com',personal:'https://outlook.live.com'},
@@ -1583,9 +1586,9 @@ function finish(keep){lookErr.textContent='';go.disabled=true;go.textContent='St
     .then(function(){   /* hand over to the list through the veil its page lifts on arrival */
       var ground=getComputedStyle(root).getPropertyValue(keep&&pick.layout==='focus'?'--bg':'--g-bg').trim();
       try{sessionStorage.setItem('bb-arrive',ground);}catch(e){}
-      if(matchMedia('(prefers-reduced-motion: reduce)').matches){location.reload();return;}
+      if(CALM.matches){location.reload();return;}
       document.querySelector('.setup').animate([{opacity:1,transform:'none'},{opacity:0,transform:'translateY(10px)'}],
-        {duration:240,easing:'cubic-bezier(.4,0,1,1)',fill:'forwards'}).finished.then(function(){location.reload();});})
+        {duration:MS.base,easing:EASE['in'],fill:'forwards'}).finished.then(function(){location.reload();});})
     .catch(function(e){lookErr.textContent=e.message;go.disabled=false;go.textContent='Start Birdbrain';});}
 go.addEventListener('click',function(){finish(true);});
 document.getElementById('look-skip').addEventListener('click',function(){finish(false);});
@@ -1594,13 +1597,13 @@ paint();f.moodle.focus();
 })();"""
 
 
-CHROME_JS = """(function(){   /* the scrollbar and the app window's title bar, on every page */
+CHROME_JS = """(function(){/*MOTION*/   /* the scrollbar and the app window's title bar, on every page */
 var root=document.documentElement;
 /* the page's own scrollbar: the thumb follows the page; drag it, or click the rail to page up or down */
 (function(){
   var bar=document.querySelector('.gscroll');if(!bar)return;
   var thumb=bar.firstElementChild,se=document.scrollingElement,drag=null,resting,raf=0,
-      smooth=matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+      smooth=CALM.matches?'auto':'smooth';
   function metrics(){var track=bar.clientHeight,view=se.clientHeight,full=se.scrollHeight,
     h=Math.max(36,track*view/Math.max(full,1));return {track:track,h:Math.min(h,track),max:full-view};}
   function paint(){raf=0;var m=metrics();bar.classList.toggle('on',m.max>1);if(m.max<=1)return;
@@ -1691,7 +1694,7 @@ function neighbour(li){var box=li.closest('.band,.bin');if(!box)return null;
    Undo (or unticking it in Completed) flies it home. Ticking off the last thing due today brings one bird flying in
    to land on the empty branch in Now, chirping if sounds are on. With reduced motion none of this moves: the toast and the list
    itself still say what happened. */
-var CALM=matchMedia('(prefers-reduced-motion: reduce)'),SETTLE='cubic-bezier(.16,1,.3,1)';
+/*MOTION*/
 function rectOf(el){return el.getBoundingClientRect();}
 function inView(r){return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;}
 function todayLeft(){var m=document.getElementById('board-meta');return m?(+m.dataset.todayLeft||0):0;}
@@ -1702,8 +1705,7 @@ function ghost(li){var r=rectOf(li),card=li.cloneNode(true),f=document.createEle
   f.className='fly';f.setAttribute('aria-hidden','true');f.inert=true;
   f.style.cssText='left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px';
   f.appendChild(card);document.body.appendChild(f);return {f:f,card:card,r:r};}
-function lift(g){return g.card.animate([{transform:'scale(1)',backgroundColor:'rgba(0,0,0,0)',boxShadow:'0 0 0 0 rgba(0,0,0,0)'},
-  {transform:'scale(1.03)'}],{duration:160,easing:SETTLE,fill:'forwards'}).finished;}
+function lift(g){return g.card.animate([{transform:'scale(1)'},{transform:'scale(1.03)'}],{duration:MS.fast,easing:EASE.out,fill:'forwards'}).finished;}
 /* where an item goes into Completed: the item itself if the bin is open and in view, else the bin's heading,
    else the window's edge in the bin's direction */
 function binSpot(id,kind){var bin=wrap.querySelector('.bin.'+(kind||'completed'));if(!bin)return null;
@@ -1723,13 +1725,12 @@ function arc(g,a,b,home){var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy),
   var y=g.card.animate(home?[{transform:'translateY('+a.y+'px) scale('+a.s+')'},{transform:'translateY('+b.y+'px) scale('+b.s+')'}]:[
     {transform:'translateY('+a.y+'px) scale('+a.s+')',easing:'cubic-bezier(.25,.6,.4,1)'},
     {transform:'translateY('+peak+'px) scale('+((a.s+b.s)/2)+') rotate('+(dx<0?2:-2)+'deg)',offset:.3,easing:'cubic-bezier(.55,0,.85,.4)'},
-    {transform:'translateY('+b.y+'px) scale('+b.s+')'}],{duration:ms,easing:home?SETTLE:'linear',fill:'forwards'});
+    {transform:'translateY('+b.y+'px) scale('+b.s+')'}],{duration:ms,easing:home?EASE.out:'linear',fill:'forwards'});
   g.anims=[x,y];return y.finished;}
 /* stop a ghost where it is and take it away (Undo turning a flight around) */
 function halt(g){(g.anims||[]).forEach(function(a){a.cancel();});g.f.remove();}
 /* the card sinks back into the glass where it lands */
-function settle(g){return g.card.animate([{backgroundColor:'rgba(0,0,0,0)',boxShadow:'0 0 0 0 rgba(0,0,0,0)'}],
-  {duration:140,easing:'ease-out',fill:'forwards'}).finished;}
+function settle(g){return g.card.animate([{transform:'scale(1)',opacity:.6}],{duration:MS.fast,easing:EASE.out,fill:'forwards'}).finished;}
 function pulseBin(kind){var s=wrap.querySelector('.bin.'+(kind||'completed')+' summary');
   if(s&&inView(rectOf(s))){s.classList.remove('pulse');void s.offsetWidth;s.classList.add('pulse');}}
 var flying={};   /* id -> its card still on the way to a bin */
@@ -1758,8 +1759,8 @@ function layout(){var m={};wrap.querySelectorAll(GLIDE).forEach(function(el){m[k
 function glide(before,skip){wrap.querySelectorAll(GLIDE).forEach(function(el){if(skip&&el.dataset.id===skip)return;
   var k=keyOf(el);
   if(k in before){var dy=before[k]-rectOf(el).top;
-    if(Math.abs(dy)>1)el.animate([{transform:'translateY('+dy+'px)'},{transform:'none'}],{duration:380,easing:SETTLE});}
-  else el.animate([{opacity:0},{opacity:1}],{duration:260,delay:140,easing:'ease-out',fill:'backwards'});});}
+    if(Math.abs(dy)>1)el.animate([{transform:'translateY('+dy+'px)'},{transform:'none'}],{duration:MS.slow,easing:EASE.out});}
+  else el.animate([{opacity:0},{opacity:1}],{duration:MS.base,delay:MS.fast,easing:EASE.out,fill:'backwards'});});}
 /* The bins open and close in place: a bin grows down out of its heading to show its items, or folds back up into
    it. Each keeps its own column, so nothing else on the page moves; a closing bin stays open until it has folded
    away. With reduced motion they just open and close. */
@@ -1772,10 +1773,10 @@ wrap.addEventListener('click',function(ev){
   /* an even, unhurried curve: the list unrolls rather than leaping to most of its height in the first frames */
   var dur=Math.round(Math.max(260,Math.min(520,220+Math.abs(to-from)*.35)));
   bin.classList.add('moving');if(!open)bin.classList.add('closing');
-  var anims=[bin.animate([{height:from+'px'},{height:to+'px'}],{duration:dur,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'})];
+  var anims=[];   /* the bin takes its new height at once; what's inside fades and slides, so nothing is laid out mid-flight */
   kids.forEach(function(k){anims.push(k.animate(open?[{opacity:0,transform:'translateY(-4px)'},{opacity:1,transform:'none'}]:[{opacity:1},{opacity:0}],
-    {duration:open?dur:Math.round(dur*.55),delay:open?Math.round(dur*.2):0,easing:'ease-out',fill:'both'}));});
-  anims[0].finished.catch(function(){}).then(function(){
+    {duration:open?dur:Math.round(dur*.55),delay:open?Math.round(dur*.2):0,easing:EASE.out,fill:'both'}));});
+  (anims.length?anims[anims.length-1].finished:Promise.resolve()).catch(function(){}).then(function(){
     if(!open)bin.open=false;
     anims.forEach(function(a){a.cancel();});bin.classList.remove('moving','closing');});
 });
@@ -1808,7 +1809,7 @@ function birdLands(){var p=perchSpot(),chirp=function(){api('/api/chirp').catch(
       p.mark.animate(p.drop?[{transform:'translate('+dx+'px,'+dy+'px) rotate(-10deg)',opacity:0},
         {transform:'translate(3px,-5px) rotate(-3deg)',opacity:1,offset:.45},{transform:'none',opacity:1}]
         :[{opacity:0},{opacity:1}],{duration:p.drop?440:200,easing:'cubic-bezier(.2,.7,.3,1)'});
-      return el.animate([{opacity:1},{opacity:0}],{duration:150,fill:'forwards'}).finished;})
+      return el.animate([{opacity:1},{opacity:0}],{duration:MS.fast,fill:'forwards'}).finished;})
     .then(function(){el.remove();},function(){el.remove();});}
 /* Home again (Undo, or Show on list): the item comes back from wherever it is: still in the air (the flight turns
    around), its own row in an open bin, or the bin's heading. undoFor(answer), if given, is the Undo for this. */
@@ -2317,11 +2318,18 @@ function switchLayout(to){var ground=((DATA.grounds||{})[to]||{})[root.dataset.m
   closeSheet(settings);
   var veil=document.createElement('div');veil.className='veil';veil.style.background=ground;document.body.appendChild(veil);
   wrap.animate([{opacity:1,transform:'none'},{opacity:0,transform:'translateY(10px) scale(.99)'}],
-    {duration:260,easing:'cubic-bezier(.4,0,1,1)',fill:'forwards'});
-  veil.animate([{opacity:0},{opacity:1}],{duration:320,delay:80,easing:'cubic-bezier(.4,0,.6,1)',fill:'forwards'})
+    {duration:MS.base,easing:EASE['in'],fill:'forwards'});
+  veil.animate([{opacity:0},{opacity:1}],{duration:MS.slow,delay:80,easing:EASE.move,fill:'forwards'})
     .finished.then(function(){location.reload();},function(){location.reload();});}
 if(root.classList.contains('arriving'))setTimeout(function(){root.classList.remove('arriving');root.style.removeProperty('--arrive');},1000);
 /* frame width (glass layout) */
+/* Motion: Full, Subtle or Off. Until one is chosen, the system's own reduce-motion setting decides. */
+var MOTION_HINTS=DATA.motion_hints||{};
+function syncMotion(){settings.querySelectorAll('input[name=motion]').forEach(function(r){r.checked=r.value===root.dataset.motion;});
+  var h=document.getElementById('motion-hint');if(h)h.textContent=MOTION_HINTS[root.dataset.motion]||'';}
+settings.querySelectorAll('input[name=motion]').forEach(function(r){r.addEventListener('change',function(){
+  PREFS.motion=r.value;root.dataset.motion=r.value;root.dataset.motionPref=r.value;readMotion();syncMotion();savePrefs({motion:r.value});});});
+syncMotion();
 settings.querySelectorAll('input[name=frame]').forEach(function(r){
   r.checked=r.value===(PREFS.frame||'wide');
   r.addEventListener('change',function(){PREFS.frame=r.value;root.dataset.frame=r.value;savePrefs({frame:r.value});});});
@@ -2506,3 +2514,6 @@ if(LIVE){
   document.addEventListener('visibilitychange',function(){if(!document.hidden)watchStatus();});
 }
 })();"""
+
+# every script gets the same motion helpers (CALM, MS, EASE: motion.py)
+JS, CHROME_JS, SETUP_JS = (script.replace("/*MOTION*/", motion.SCRIPT) for script in (JS, CHROME_JS, SETUP_JS))

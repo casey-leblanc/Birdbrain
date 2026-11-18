@@ -18,7 +18,9 @@ from store import Store
 KEY = "ui_prefs"
 BINS = ("completed", "archived")
 DEFAULTS = {"layout": theme.DEFAULT_LAYOUT, "theme": theme.DEFAULT_THEME, "focus_theme": theme.DEFAULT_THEME,
-            "mode": theme.DEFAULT_MODE, "sound": True, "frame": "wide", "courses": {}, "bins": {}, "imported": False,
+            "mode": theme.DEFAULT_MODE, "sound": True, "frame": "wide",
+            # "full", "subtle" or "off" (motion.py); "" follows the system's reduce-motion setting
+            "motion": "", "courses": {}, "bins": {}, "imported": False,
             # the Custom theme: {"accent", "light": {measured photo}, "dark": {...}} and {"light": {4 colours}, ...}
             "glass_custom": {}, "focus_custom": {}}
 # Labels for things that aren't classes. These four to begin with; the student renames, recolours, removes and adds.
@@ -54,6 +56,8 @@ def load(store: Store) -> dict:
         if not isinstance(p[k], dict):
             p[k] = {}
     p["labels"] = _clean_labels(p["labels"]) if "labels" in saved else [dict(x) for x in LABELS]
+    if p["motion"] not in ("", "full", "subtle", "off"):
+        p["motion"] = ""
     return p
 
 
@@ -173,6 +177,10 @@ def update(store: Store, patch: dict) -> dict:
         if patch["frame"] not in ("wide", "narrow"):
             raise ValueError("Unknown frame width.")
         p["frame"] = patch["frame"]
+    if "motion" in patch:
+        if patch["motion"] not in ("", "full", "subtle", "off"):
+            raise ValueError("Unknown motion level.")
+        p["motion"] = patch["motion"]
     if "sound" in patch:
         p["sound"] = bool(patch["sound"])
     if "courses" in patch:  # {code: {nick, color}} or {code: null} to reset

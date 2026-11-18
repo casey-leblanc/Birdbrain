@@ -144,7 +144,7 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 .act:hover{color:#fff;text-decoration-thickness:2px}
 .act.del,.act.label-del{text-decoration-color:var(--g-red);text-decoration-thickness:2px}
 .actions .act,.btn,.state{font:inherit;color:rgba(255,255,255,.92);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
- border-radius:6px;text-decoration:none;cursor:pointer;transition:background-color .3s,color .3s,box-shadow .2s ease-out}
+ border-radius:6px;text-decoration:none;cursor:pointer;transition:none}
 .actions .act{font-size:1rem;min-height:44px;padding:8px 16px;white-space:nowrap}
 .actions .act::before{display:none}
 .actions .act.strong,.btn.primary{font-weight:700}
@@ -181,7 +181,7 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 /* items: clear on the column's glass, with a wash and a slight lift under the pointer. The date chip says how soon;
    only overdue work also tints its tile, and hovering deepens that tint rather than clearing it. */
 .row{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:4px;align-items:start;padding:12px 16px 12px 8px;border-radius:6px;
- transition:background-color .2s ease-out,box-shadow .2s ease-out}
+ transition:none}
 .row:hover{background:var(--g-tile-hover);box-shadow:var(--g-lift)}
 .row[data-due=overdue]{background:rgba(255,133,119,.14)}
 .row[data-due=overdue]:hover{background:rgba(255,133,119,.2)}
@@ -213,12 +213,12 @@ a.t:hover{text-decoration-style:solid;text-decoration-color:currentColor}
 .unsure{font-style:italic}
 .row.past .t,.row.past .w{color:var(--g-t2)}
 .row.is-done .t{color:var(--g-t2);text-decoration:line-through;font-weight:400}
-.row.leaving{opacity:0;transform:translateX(8px);transition:opacity .18s ease-in,transform .18s ease-in}
+.row.leaving{opacity:0;transform:translateX(8px);transition:opacity var(--m-base) var(--m-in),transform var(--m-base) var(--m-in)}
 .detail{font-size:.8125rem;line-height:1.5;color:var(--g-t2);margin-top:6px;overflow-wrap:anywhere}
 .acts{display:inline-flex;gap:.3rem;margin-left:.2rem}
 /* Archive: on every open item, shown under the pointer or while the tile has keyboard focus (always, on touch) */
 .act.arch{margin-left:auto}
-.act.arch,.act.whatis{opacity:0;transition:opacity .2s ease-out}
+.act.arch,.act.whatis{opacity:0;transition:opacity var(--m-base) var(--m-out)}
 .row:hover .act.arch,.row:focus-within .act.arch,.row:hover .act.whatis,.row:focus-within .act.whatis{opacity:1}
 @media (hover:none){.act.arch,.act.whatis{opacity:1}}
 .kw-msg:empty{display:none}
@@ -294,7 +294,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 .state::after{content:"Show"}
 .bin[open] .state::after{content:"Hide"}
 .bin summary.pulse .bin-title{animation:pulse 1s ease-out}
-@keyframes pulse{from{color:var(--g-yellow)}}
+@keyframes pulse{from{transform:scale(1.35)}}
 .hint{font-size:.8125rem;color:var(--g-t2);margin:8px 0 16px;max-width:44rem}
 .bin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr));gap:8px 16px;align-items:start}
 
@@ -303,7 +303,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
  background:var(--g-sheet);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);outline:2px solid var(--g-edge);
  box-shadow:inset 3px 3px 6px rgba(255,255,255,.28),inset -3px -3px 6px rgba(0,0,0,.35)}
 .sheet-dialog::backdrop{background:rgba(8,12,22,.35);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
-.sheet-dialog[open]{animation:sheet-in .2s ease-out}
+.sheet-dialog[open]{animation:sheet-in var(--m-base) var(--m-out)}
 @keyframes sheet-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .sheet{padding:24px 28px 28px;margin:0}
 .sheet-head{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--g-rule);padding-bottom:10px;margin-bottom:.4rem}
@@ -315,7 +315,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 #settings .sheet-head{padding:24px 28px 10px;margin:0;border-bottom:0}
 .tabs{flex:none;display:flex;gap:4px;padding:0 18px;border-bottom:1px solid var(--g-rule);overflow-x:auto;scrollbar-width:none}
 .tab{font:inherit;font-size:1rem;font-weight:600;color:var(--g-t2);background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;
- padding:0 10px;min-height:44px;min-width:44px;cursor:pointer;white-space:nowrap;transition:color .15s}
+ padding:0 10px;min-height:44px;min-width:44px;cursor:pointer;white-space:nowrap;transition:none}
 .tab:hover{color:#fff}
 .tab[aria-selected=true]{color:var(--g-t1);border-bottom-color:var(--g-t1)}
 .tab:focus-visible{outline:2px solid var(--g-focus);outline-offset:-6px;border-radius:6px}
@@ -345,7 +345,7 @@ kbd{display:inline-block;min-width:26px;padding:0 7px;font:inherit;font-size:.81
 .theme-opt:has(input:focus-visible) .swatch{outline:2px solid var(--g-focus);outline-offset:4px}
 .seg{display:flex;flex-wrap:wrap;gap:8px}
 .seg label{position:relative;cursor:pointer}
-.seg span{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border:1px solid var(--g-line);border-radius:6px;color:var(--g-t2);background:rgba(255,255,255,.04);transition:background-color .15s,box-shadow .2s ease-out}
+.seg span{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border:1px solid var(--g-line);border-radius:6px;color:var(--g-t2);background:rgba(255,255,255,.04);transition:none}
 .seg label:hover span{color:#fff;background:rgba(255,255,255,.12);box-shadow:var(--g-lift)}
 .seg input:checked+span{color:#1C2230;background:rgba(255,255,255,.9);border-color:transparent;font-weight:700}
 .seg label:has(input:focus-visible){outline:2px solid var(--g-focus);outline-offset:2px;border-radius:6px}
@@ -396,7 +396,7 @@ fieldset.field{border:0;padding:0;margin:0 0 1rem}
 .courses .warn{grid-area:warn;font-size:.8125rem;color:#FFC2B8;margin-top:2px}.courses .warn:empty{display:none}
 #toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,10px);max-width:calc(100vw - 32px);padding:10px 18px;border-radius:8px;
  background:rgba(30,35,46,.88);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);outline:1px solid rgba(255,255,255,.5);
- color:#fff;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s ease-out,transform .2s ease-out}
+ color:#fff;font-weight:600;opacity:0;pointer-events:none;transition:opacity var(--m-base) var(--m-out),transform var(--m-base) var(--m-out)}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 #toast.has-action.show{pointer-events:auto;display:flex;align-items:center;gap:16px}
 .toast-undo{font:inherit;font-weight:700;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:6px;
@@ -415,5 +415,4 @@ fieldset.field{border:0;padding:0;margin:0 0 1rem}
 #settings{height:calc(100vh - 32px)}#settings .sheet-head{padding:18px 18px 8px}.tabs{padding:0 8px;gap:0;justify-content:space-between}.tab{padding:0 5px}.pane{padding:0 18px 22px}
 .courses li{grid-template-columns:32px 1fr auto;grid-template-areas:"color code reset" ". nick nick" ". warn warn";row-gap:6px}}
 .no-anim *{transition:none!important}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 """
