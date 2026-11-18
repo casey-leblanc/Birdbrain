@@ -39,6 +39,7 @@ import theme
 from config import REPORT_PATH, Settings
 import reader
 import repeats
+import schools
 import snooze
 from store import Item, Store
 
@@ -380,11 +381,13 @@ def _all_clear(b: Board, settings: Settings, now: datetime) -> str:
             + (f'<p class="clear-next">{more}</p>' if more else "") + '</div>')
 
 
-def _first_scan() -> str:
-    """Before the first scan has finished, Now says what's happening, so an empty list doesn't read as a result."""
+def _first_scan(reading: str = "") -> str:
+    """Before the first scan has finished, Now says what's happening, so an empty list doesn't read as a result:
+    what Birdbrain is reading right now (kept up to date by the page), then what to expect."""
     return (f'<div class="clear first">{WING}<h3 class="clear-head">reading your courses</h3>'
+            f'<p class="clear-sub" id="first-says" aria-live="polite">{e(reading)}</p>'
             '<p class="clear-sub">The first scan reads every course page, so it takes a few minutes. '
-            "Your deadlines appear here as soon as it's done.</p></div>")
+            "Your deadlines appear here as it goes.</p></div>")
 
 
 def _day_clear(b: Board, now: datetime) -> str:
@@ -394,7 +397,7 @@ def _day_clear(b: Board, now: datetime) -> str:
 
 
 def _column(c: Column, now: datetime, courses: dict, b: Board | None = None, settings: Settings | None = None,
-            scanned: bool = True, labels: dict | None = None) -> str:
+            scanned: bool = True, labels: dict | None = None, reading: str = "") -> str:
     slug = re.sub(r"\W+", "-", c.title.lower())
     body = ""
     for g in c.groups:
@@ -412,7 +415,7 @@ def _column(c: Column, now: datetime, courses: dict, b: Board | None = None, set
             body += f'{label}<ul class="day{bare}"{day}>{rows}</ul>'
     if c.title == "Now" and b is not None and settings is not None:
         if not c.count:
-            body = (_all_clear(b, settings, now) if scanned else _first_scan()) + body
+            body = (_all_clear(b, settings, now) if scanned else _first_scan(reading)) + body
         elif not (c.groups[0].items or c.groups[1].items):
             body = _day_clear(b, now) + body
     elif not c.count:
@@ -518,7 +521,8 @@ def render_board(b: Board, settings: Settings, status: str, now: datetime, versi
     return "".join([
         _tools(status, progress),
         _sign_in_card(sign_in),
-        '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned, labels) for c in b.columns), "</main>",
+        '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned, labels,
+                                                 reading=(progress or {}).get("text") or status) for c in b.columns), "</main>",
         _bins(b, settings, now, courses, prefs["bins"], labels),
         # today-left: overdue plus due today, so the page can tell when you've ticked off the last of them
         f'<span id="board-meta" hidden data-version="{version}" data-today-left="{b.overdue + b.due_today}"></span>',
@@ -1026,9 +1030,17 @@ _TITLEBAR = ('<div class="titlebar"><div class="edge" data-edge="top"></div><div
 
 
 def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url: str = "") -> str:
-    """First run, in two steps. 1: the Moodle and Outlook addresses, with a short guide to finding each (checked,
-    not saved). 2: make it yours: Glass or Focus and a theme, and the page itself takes each choice as it's made.
-    Start (POST /api/setup) saves both and moves on to signing in; Skip keeps the default look."""
+    """First run, in two steps, meant to take under a minute. 1: your school. Choosing one Birdbrain knows (LSU)
+    fills in where Moodle and Outlook are; "Another school" asks for the addresses, with a short guide to finding
+    each (checked, not saved). 2: make it yours: Glass or Focus and a theme, and the page itself takes each choice
+    as it's made. Start (POST /api/setup) saves both and moves on to the one sign-in window; Skip keeps the default
+    look."""
+    known = "".join(f'<label><input type="radio" name="school" value="{k}"{" checked" if k == schools.DEFAULT else ""}>'
+                    f'<span title="{e(v["full"])}">{e(v["name"])}</span></label>' for k, v in schools.SCHOOLS.items())
+    school_pick = ('<fieldset class="field"><legend>Your school</legend>'
+                   f'<div class="seg" role="radiogroup" aria-label="Your school">{known}'
+                   '<label><input type="radio" name="school" value="other"><span>Another school</span></label></div>'
+                   f'<p class="hint" id="school-says" aria-live="polite">{e(schools.SCHOOLS[schools.DEFAULT]["says"])}</p></fieldset>')
     mode = prefs["mode"] if prefs["mode"] in ("dark", "light") else theme.DEFAULT_MODE
     head_js = ("var r=document.documentElement;if(r.dataset.modePref==='system')"
                "r.dataset.mode=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';")
@@ -1048,7 +1060,7 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<span class="lp-art focus-art" aria-hidden="true"><i></i><i></i><i></i></span><span class="lp-name">Focus</span>'
         '<span class="lp-desc">A calm, roomy page with nothing but your list.</span></label>')
     data = json.dumps({"layout": prefs["layout"], "theme": prefs["theme"], "focus_theme": prefs["focus_theme"],
-                       "mode": prefs["mode"]}).replace("</", "<\\/")
+                       "mode": prefs["mode"], "schools": schools.SCHOOLS}).replace("</", "<\\/")
     return "".join([
         f'<!doctype html><html lang="en"{" class=\"app-window\"" if app_window and token else ""} data-layout="{e(prefs["layout"])}" '
         f'data-theme="{e(prefs_mod.active_theme(prefs))}" data-mode="{mode}" data-mode-pref="{e(prefs["mode"])}" data-motion-pref="{e(prefs.get("motion", ""))}">',
@@ -1061,8 +1073,10 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<section id="step-connect" aria-labelledby="setup-title">',
         '<h1 id="setup-title" tabindex="-1">welcome to birdbrain</h1>',
         '<p class="lede">Birdbrain keeps one list of your assignments, exams and events from Moodle and Outlook. '
-        'First, tell it where to find them.</p>',
+        'Say where you study, sign in once, and it starts reading.</p>',
         '<form id="setup-form" novalidate>',
+        school_pick,
+        '<div id="own-addresses" hidden>',
         '<label class="field"><span>Moodle address</span><input name="moodle" type="url" inputmode="url" autocomplete="off" '
         'spellcheck="false" placeholder="https://moodle.yourschool.edu" required></label>',
         '<details class="guide"><summary>How do I find my Moodle address?</summary><ol>'
@@ -1080,6 +1094,7 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<li>School and work accounts usually start <b>https://outlook.office.com</b> or '
         '<b>https://outlook.cloud.microsoft</b>. Personal Outlook.com and Hotmail accounts start '
         '<b>https://outlook.live.com</b>. Choosing your account type above fills this in for you.</li></ol></details>',
+        '</div>',
         '<fieldset class="field sites"><legend>Also check <em>optional</em></legend>'
         '<label class="check"><input type="checkbox" name="gradescope"><span>Gradescope</span></label>'
         '<label class="check"><input type="checkbox" name="mcgraw"><span>McGraw Hill Connect</span></label>'
@@ -1697,12 +1712,20 @@ function post(body){return fetch('/api/setup',{method:'POST',headers:{'Content-T
     if(!res.ok)throw new Error(j.error||('Error '+res.status));return j;});});}
 function show(step){connect.hidden=step!=='connect';look.hidden=step!=='look';stepN.textContent='Step '+(step==='connect'?1:2)+' of 2';
   scrollTo(0,0);document.getElementById(step==='connect'?'setup-title':'look-title').focus();}
-/* step 1: where Moodle and Outlook are (checked here, saved with step 2) */
+/* step 1: your school. One Birdbrain knows fills in where Moodle and Outlook are; "Another school" asks for them
+   (checked here, saved with step 2). */
 function sync(){var kind=f.account.value,now=f.outlook.value.trim();
   document.querySelectorAll('.outlook-field').forEach(function(el){el.hidden=kind==='none';});
   if(SITES[kind]&&(!now||now===SITES.school||now===SITES.personal))f.outlook.value=SITES[kind];}
 form.querySelectorAll('input[name=account]').forEach(function(r){r.addEventListener('change',sync);});
-sync();
+var own=document.getElementById('own-addresses'),schoolSays=document.getElementById('school-says'),filled='';
+function school(){var k=f.school.value,s=pick.schools[k];
+  own.hidden=!!s;schoolSays.textContent=s?s.says:'Paste where your Moodle is. Any page of it will do.';
+  if(s){f.moodle.value=filled=s.moodle;f.account.value='school';f.outlook.value=s.outlook;}
+  else{if(f.moodle.value===filled)f.moodle.value='';f.moodle.focus();}
+  sync();}
+form.querySelectorAll('input[name=school]').forEach(function(r){r.addEventListener('change',school);});
+school();
 form.addEventListener('submit',function(ev){ev.preventDefault();err.textContent='';
   var body={moodle:f.moodle.value.trim(),outlook:f.outlook.value.trim(),no_outlook:f.account.value==='none',
     gradescope:f.gradescope.checked,mcgraw:f.mcgraw.checked};
@@ -1738,7 +1761,8 @@ function finish(keep){lookErr.textContent='';go.disabled=true;go.textContent='St
 go.addEventListener('click',function(){finish(true);});
 document.getElementById('look-skip').addEventListener('click',function(){finish(false);});
 document.getElementById('look-back').addEventListener('click',function(){show('connect');});
-paint();f.moodle.focus();
+document.getElementById('look-title').addEventListener('keydown',function(ev){if(ev.key==='Enter'){ev.preventDefault();finish(true);}});   /* Enter, Enter and you're in */
+paint();(own.hidden?form.querySelector('input[name=school]:checked'):f.moodle).focus();
 })();"""
 
 
@@ -2158,7 +2182,8 @@ function paintStatus(s){if(typeof s.quick==='number'){if(quickAsks!==null&&s.qui
   if(s.focus){var fresh=focusAsks===null?(s.focus.n>0&&Date.now()/1000-s.focus.at<20):s.focus.n>focusAsks;   /* a window opened by the click still goes there */
     focusAsks=s.focus.n;if(fresh&&s.focus.id)goToCard(s.focus.id);}   /* the shortcut, with no small window to open */
   var st=wrap.querySelector('.status');if(!st)return;
-  var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar');
+  var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar'),first=document.getElementById('first-says');
+  if(first&&typeof text==='string'&&first.textContent!==text)first.textContent=text;   /* the first scan: the list itself says what's being read */
   if(t&&typeof text==='string'&&t.textContent!==text)t.textContent=text;
   st.classList.toggle('scanning',!!p);
   if(!p){if(bar)bar.remove();   /* a new status between scans ("Back from sleep…") is worth reading; "Updated 10:32." isn't */

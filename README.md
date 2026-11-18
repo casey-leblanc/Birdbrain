@@ -24,7 +24,8 @@ Windows 10 or 11. Nothing else to install, no account to make, and no key to pas
 
 ## First run
 
-1. Birdbrain asks for your Moodle address (for LSU, `https://moodle.lsu.edu`) and which Outlook you use.
+1. Birdbrain asks for your school. LSU is already chosen, so there is nothing to type; at another school, paste
+   your Moodle address.
 2. A sign-in window opens. Sign in to Moodle and Outlook the way you always do.
 3. The window closes by itself and your list fills in. The first scan reads every course page, so give it a few
    minutes.

@@ -162,7 +162,7 @@ One test for everything here: does it help a student see what to do and start on
 - [x] 5. Snooze: S on a card, until tomorrow, next week or a day; it comes back by itself
 - [x] 6. Repeating personal items from quick write
 - [x] 7. Each day says its load; a heavy day ahead is called out once
-- [ ] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
+- [x] 8. First run in under a minute: choose LSU, one sign-in window, the list shows what it's reading
 - [ ] 9. Report a problem: a zip with everything personal removed, shown before it's saved, never uploaded
 - [ ] 10. The states in between, each in one line
 - [ ] 11. Backup: export and import personal items and labels
@@ -234,3 +234,11 @@ One test for everything here: does it help a student see what to do and start on
 - Heavy is four points: a thing to hand in or a quiz is one, an exam two; things to attend don't count. A heavy
   day is said once, two or three days ahead, with the morning list (so not at all if that is turned off), and its
   load is bold on the page. Today and tomorrow are never "heavy ahead": the morning and evening lines cover them.
+- First run: LSU is chosen already (it is who the app is for), which fills in `https://moodle.lsu.edu` and the
+  school Outlook; the address boxes only appear for "Another school". Known schools live in `schools.py`. The
+  page still says, right there, that Birdbrain is not LSU's.
+- Enter on step 1 continues and Enter on step 2 starts, so a keyboard gets from the welcome page to the sign-in
+  window in two presses. The sign-in window was already one window for every site.
+- While the first scan runs, the empty list itself says what is being read (the same words as the status dot),
+  kept current as the scan goes.
+- The welcome page had no browser test before; `tests/ui/test_first_run.py` is one.

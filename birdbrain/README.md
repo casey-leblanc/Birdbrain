@@ -24,14 +24,18 @@ To check a copy works without touching your data, run `Birdbrain.exe --selftest 
 
 ## First run
 
-1. **Where are your sites?** Paste your Moodle address (open Moodle, copy the address from the address bar; for
-   LSU it is `https://moodle.lsu.edu`) and pick your Outlook: school or work, personal, or none. Tick Gradescope
-   or McGraw Hill Connect if your courses use them.
+It takes under a minute.
+
+1. **Your school.** LSU is already chosen, and that fills in where Moodle and your LSU email are: nothing to
+   type. At another school, choose **Another school** and paste your Moodle address (open Moodle, copy the address
+   from the address bar) and pick your Outlook: school or work, personal, or none. Tick Gradescope or McGraw Hill
+   Connect if your courses use them.
 2. **Make it yours.** Pick a layout, Glass or Focus, and a theme. You can change both later.
-3. **Sign in.** A window opens with Moodle and Outlook. Sign in as you always do, and choose "Yes" if Microsoft
+3. **Sign in.** One window opens with Moodle and Outlook. Sign in as you always do, and choose "Yes" if Microsoft
    asks "Stay signed in?". The window closes by itself once every site is signed in.
 
-The first scan reads every course page, so it takes a few minutes. Your deadlines appear as it goes.
+With a keyboard, the first two steps are Enter, Enter. The first scan reads every course page, so it takes a few
+minutes; meanwhile the list says what it is reading, and your deadlines appear as it goes.
 
 ## Where your data stays
 

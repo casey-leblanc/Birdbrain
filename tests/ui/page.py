@@ -71,9 +71,9 @@ class PageTest(unittest.TestCase):
         prefs.update(self.store, {"layout": self.layout, "sound": False})
         s = self.store
         board = lambda: report.build(s, self.settings)
+        self._board = board
         self.server = ListServer(
-            s, render_page=lambda t: report.render(board(), self.settings, self.status, datetime.now(), t, s.version,
-                                                   prefs.load(s), sign_in=self.needs_sign_in, hotkey=self.hotkey_view()),
+            s, render_page=lambda t: self.page_html(t),
             render_board=lambda t: report.render_board(board(), self.settings, self.status, datetime.now(), s.version,
                                                        prefs.load(s), sign_in=self.needs_sign_in),
             status=lambda: {"version": s.version, "status": self.status, "scanning": False, "progress": None,
@@ -86,6 +86,12 @@ class PageTest(unittest.TestCase):
         self.errors: list[str] = []
         self.page.on("pageerror", lambda e: self.errors.append(str(e)))
         self.open()
+
+    def page_html(self, token: str) -> str:
+        """The page the app serves: the list. A test of the welcome page serves that instead."""
+        s = self.store
+        return report.render(self._board(), self.settings, self.status, datetime.now(), token, s.version,
+                             prefs.load(s), sign_in=self.needs_sign_in, hotkey=self.hotkey_view())
 
     def context_options(self) -> dict:
         """How the browser window is set up; a test adds what it needs (a touch screen, say)."""
