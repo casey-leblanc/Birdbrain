@@ -473,9 +473,12 @@ def _sign_in_card(sites: list | None) -> str:
             '<button type="button" class="btn" id="card-sign-in">Sign in</button></div>')
 
 
+LONG_LIST = 80   # past this many cards, the ones off screen aren't drawn until they're scrolled to
+
+
 def _bin(kind: str, title: str, hint: str, rows: str, count: int, is_open: bool) -> str:
     noun = "item" if count == 1 else "items"
-    return (f'<details class="bin {kind}" data-bin="{kind}"{" open" if is_open else ""}><summary>'
+    return (f'<details class="bin {kind}{" long" if count > LONG_LIST else ""}" data-bin="{kind}"{" open" if is_open else ""}><summary>'
             f'<h2 class="bin-title">{title}</h2><span class="n">{count}<span class="sr"> {noun}</span></span>'
             f'<span class="state" aria-hidden="true"></span></summary><p class="hint">{hint}</p>'
             f'<ul class="bin-grid">{rows}</ul></details>')
@@ -522,7 +525,7 @@ def render_board(b: Board, settings: Settings, status: str, now: datetime, versi
     return "".join([
         _tools(status, progress),
         _sign_in_card(sign_in),
-        '<main class="bands">', "".join(_column(c, now, courses, b, settings, scanned, labels,
+        f'<main class="bands{" long" if sum(c.count for c in b.columns) > LONG_LIST else ""}">', "".join(_column(c, now, courses, b, settings, scanned, labels,
                                                  reading=(progress or {}).get("text") or status) for c in b.columns), "</main>",
         _bins(b, settings, now, courses, prefs["bins"], labels),
         # today-left: overdue plus due today, so the page can tell when you've ticked off the last of them
@@ -1632,9 +1635,9 @@ body{font-size:1rem}
 """
 
 MOTION_CSS = """
-/* a long list: a card outside the window isn't laid out or painted until it's scrolled to (it keeps the height it
-   last had, or a likely one), so a list of hundreds costs what the cards on screen cost */
-.bands .row,.bin .row{content-visibility:auto;contain-intrinsic-height:auto 76px}
+/* a long list (over LONG_LIST cards): a card outside the window isn't laid out or painted until it's scrolled to (it
+   keeps the height it last had, or a likely one), so a list of hundreds costs what the cards on screen cost */
+.bands.long .row,.bin.long .row{content-visibility:auto;contain-intrinsic-height:auto 76px}
 /* the scan's progress, beside the status line: a slim track that fills as the scan goes; one that can't tell how far
    it has got (an inbox scan) sends a short band along it instead. Each layout sets its colours. */
 .scan-bar{display:inline-block;vertical-align:middle;width:min(160px,32vw);height:6px;margin-left:10px;border-radius:3px;overflow:hidden;

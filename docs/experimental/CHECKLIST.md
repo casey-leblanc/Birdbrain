@@ -289,3 +289,6 @@ One test for everything here: does it help a student see what to do and start on
   the time is already on the card); an "in progress" state (a third state to keep up by hand); a weekly summary
   notification (the heavy-day call and the morning list already say it, and one more notification is one more to
   ignore); a calendar file export (it has to be imported somewhere, which is setup).
+- Not drawing off-screen cards (project 3) now applies only to a long list, over 80 cards. On a short list it
+  gained nothing, and a card the browser hadn't drawn yet could report no text for a moment, which two tests met
+  on the slower build machine.
