@@ -11,9 +11,9 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 4. No AI: Jev and TypeSafe removed; plain rules; a lab with "test" in its name is an assignment
 - [x] 5. "What is this?": correct a card's kind once, sticks for the series
 - [x] 6. Fixes: one running copy, scan after sleep and stay awake, 11:59 PM and no-time dates, sign-in card
-- [ ] 7. Self-update from `exp-` pre-releases, no token, SHA-256 checked
+- [x] 7. Self-update from `exp-` pre-releases, no token, SHA-256 checked
 - [x] 8. Header removed: list fills the window, one status dot, one menu
-- [ ] 9. README for students, with the LSU sentence (also on the welcome page and in About)
+- [x] 9. README for students, with the LSU sentence (also on the welcome page and in About)
 
 ### Decisions
 
@@ -40,3 +40,8 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   menu until quick write replaces it in project 2. M opens the menu. Quit from the menu asks "Click again to quit".
 - A unit test runs the page's scripts through `node --check`: one stray bracket leaves a list that draws but does
   nothing.
+- The updater follows only `exp-` pre-releases and needs no token (the repository is public). Checked here against
+  the real GitHub: found the newest build, downloaded it, SHA-256 matched. `--install-update <zip>` installs a
+  build from a file; the build on GitHub uses it to do a real update on Windows before anything is published.
+- The root README is the short student page; `birdbrain/README.md` is the full guide and ships in the zip. A test
+  holds the LSU sentence to the agreed wording in both, on the welcome page and in Settings › About.

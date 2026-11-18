@@ -37,6 +37,11 @@ from store import Item, Store
 SOURCE = {"moodle": "Moodle", "outlook-mail": "Email", "outlook-calendar": "Outlook calendar",
           "gradescope": "Gradescope", "mcgraw": "McGraw Hill Connect", "manual": "Added by you"}
 NOT_COURSES = ("Email", "Calendar", "Personal")
+# Said on the welcome page, in Settings > About and at the top of the README.
+NOT_LSU = ("Birdbrain is a student project. It is not affiliated with, endorsed by or supported by "
+           "Louisiana State University.")
+STAYS_HERE = ("Your list and your sign-ins stay on this computer. You type your password only into Moodle’s and "
+              "Microsoft’s own pages; Birdbrain never sees it.")
 e = html.escape
 
 
@@ -710,6 +715,8 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         '<p class="hint">The settings file holds the scan interval, how far ahead to look and other options.</p>'
         '<div class="btn-row"><button type="button" class="btn" data-open="settings">Open settings file</button>'
         '<button type="button" class="btn" data-open="log">Open log</button></div></div>'
+        f'<div class="set-sec" id="about-sec"><h3>About</h3><p class="hint">{e(NOT_LSU)}</p>'
+        f'<p class="hint">{e(STAYS_HERE)} There is no AI in Birdbrain: plain rules read your course pages and emails.</p></div>'
         '<div class="set-sec"><h3>Quit</h3>'
         '<p class="hint">Closing this window keeps Birdbrain scanning in the tray. Quit stops it until you start it again.</p>'
         '<div class="btn-row"><button type="button" class="btn danger" id="quit-app">Quit Birdbrain</button></div></div>')
@@ -880,7 +887,7 @@ def render_setup(token: str, prefs: dict, app_window: bool = False, outlook_url:
         '<p class="hint">Only if your courses use them. You sign in to each in the same window as Moodle.</p></fieldset>',
         '<p class="form-error" role="alert"></p>',
         '<div class="actions-row"><button class="btn primary" type="submit">Continue</button></div>',
-        '</form></section>',
+        f'</form><p class="hint about" id="setup-about">{e(NOT_LSU)} {e(STAYS_HERE)}</p></section>',
         '<section id="step-look" aria-labelledby="look-title" hidden>',
         '<h2 id="look-title" class="look-title" tabindex="-1">make it yours</h2>',
         '<p class="lede">Choose how your list looks. You can change it any time in Settings, where you can also '
@@ -1299,7 +1306,7 @@ SETUP_CSS = """
  border:1px solid var(--g-line);border-radius:8px}
 .guide b{color:var(--g-t1);font-weight:700;overflow-wrap:anywhere}
 .setup .actions-row{margin-top:.2rem}
-.setup .next{margin:1.1rem 0 0;max-width:none}
+.setup .next,.setup .about{margin:1.1rem 0 0;max-width:none}
 [hidden]{display:none!important}
 /* step 2: Glass or Focus, then a theme */
 .layout-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:12px}
