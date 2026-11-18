@@ -250,6 +250,14 @@ def _label(label_id: str, labels: dict | None) -> str:
     return f'<span class="lab" data-label="{e(label_id)}" style="--lab:{e(lab["color"])}">{e(lab["name"])}</span>'
 
 
+def _scraped_fields(i: Item) -> str:
+    """What the details sheet shows, locked, for an item that came from one of your sites."""
+    code = course_code(i)
+    return json.dumps({"title": display_title(i), "kind": test_level(i) or i.kind, "date": i.due.date().isoformat(),
+                       "time": f"{i.due:%H:%M}" if has_time(i) else "", "course": "" if code in NOT_COURSES else code,
+                       "notes": _detail(i), "label": "", "from": SOURCE.get(i.source, "one of your sites")})
+
+
 def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
          reason: str = "", done: bool = False, urgent: bool = False, labels: dict | None = None) -> str:
     code, title = course_code(i), display_title(i)
@@ -273,7 +281,7 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
         if i.source != "manual":   # say what it is, if the rules have it wrong (your own items have Edit)
             what = test_level(i) or i.kind
             meta += (f'<button type="button" class="act whatis needs-app" data-what="{what}" aria-haspopup="dialog" '
-                     f'title="What is this? (now: {what})" aria-label="What is {e(title)}? Now: {what}">?</button>')
+                     f'title="Details, and what this is (E)" aria-label="Details of {e(title)}. It is listed as: {what}">?</button>')
 
     did = f"d{zlib.crc32(i.id.encode()):x}"
     acts = (f'<span class="acts needs-app"><button type="button" class="act edit">Edit</button>'
@@ -299,7 +307,7 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
         what = [level.capitalize() if level else "", courses.get(code, {}).get("nick") or code, _due_words(i, now)]
         said = f'<span id="{did}w" hidden>{e(", ".join(x for x in what if x))}</span>'
     desc = f' aria-describedby="{did}w"' if said else ""
-    fields = f' data-manual="{e(_manual_fields(i))}"' if i.source == "manual" else ""
+    fields = f' data-manual="{e(_manual_fields(i))}"' if i.source == "manual" else f' data-details="{e(_scraped_fields(i))}"'
     if not (reason or done) and (due := urgency(i, now)):
         fields += f' data-due="{due}"'
     return (f'<li class="{classes}" data-id="{e(i.id)}"{fields}><label class="tickwrap">'
@@ -755,7 +763,11 @@ def _settings_dialog(b: Board, now: datetime, layout: str, photo, settings: Sett
         + pane("app", app) + '</div></dialog>')
 
 
-def _item_dialog(b: Board, now: datetime) -> str:
+def _item_dialog(b: Board, now: datetime, labels: list | None = None) -> str:
+    """The details sheet. For something of yours every field can be changed; for something from one of your sites
+    they are shown but locked, except what it is, which you can say."""
+    label_options = '<option value="">None</option>' + "".join(
+        f'<option value="{e(x["id"])}">{e(x["name"])}</option>' for x in labels or [])
     types = "".join(f'<label><input type="radio" name="kind" value="{k}"{" checked" if k == "assignment" else ""}>'
                     f'<span>{label}</span></label>'
                     for k, label in (("assignment", "Assignment"), ("exam", "Exam"), ("quiz", "Quiz"),
@@ -773,23 +785,12 @@ def _item_dialog(b: Board, now: datetime) -> str:
         '<label class="field"><span>Time <em>optional</em></span><input type="time" name="time"></label></div>'
         '<label class="field"><span>Course <em>optional</em></span>'
         f'<input name="course" list="course-list" maxlength="40" autocomplete="off"></label><datalist id="course-list">{options}</datalist>'
+        f'<label class="field"><span>Label <em>optional</em></span><select name="label">{label_options}</select></label>'
         '<label class="field"><span>Notes <em>optional</em></span><input name="notes" maxlength="300" autocomplete="off"></label>'
+        '<p class="hint" id="locked-note" hidden></p>'
         '<p class="form-error" role="alert"></p>'
         '<div class="actions-row"><button type="button" class="act" data-close>Cancel</button>'
         '<button type="submit" class="btn primary">Add item</button></div></form></dialog>')
-
-
-def _kind_dialog() -> str:
-    """What is this? The student says what an item is, and it sticks."""
-    choices = "".join(f'<button type="button" class="btn" data-what="{k}">{label}</button>'
-                      for k, label in (("assignment", "Assignment"), ("quiz", "Quiz"), ("exam", "Exam"), ("event", "Event")))
-    return ('<dialog id="kind-dialog" class="sheet-dialog" aria-labelledby="kind-title"><div class="sheet">'
-            '<div class="sheet-head"><h2 id="kind-title">What is this?</h2>'
-            '<button type="button" class="act" data-close>Close</button></div>'
-            '<p class="kind-name"></p>'
-            f'<div class="btn-row kind-choices">{choices}</div>'
-            '<p class="hint">Your answer sticks. It also goes for the others like it in the same course (the same '
-            'lead-in, such as “Biochemical Testing - …”), now and when new ones turn up.</p></div></dialog>')
 
 
 def _quick_dialog() -> str:
@@ -845,7 +846,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now)}{_kind_dialog()}{_quick_dialog()}{_keys_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now, prefs.get('labels'))}{_quick_dialog()}{_keys_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -989,8 +990,6 @@ p,h1,h2,h3,h4,ul{margin:0;padding:0}ul{list-style:none}
 .btn.primary:hover{background:color-mix(in srgb,var(--struct) 86%,var(--text))}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.danger{color:var(--accent);border-color:var(--accent)}
-.kind-name{font-weight:700;margin:0 0 12px}
-.kind-choices .btn[aria-pressed=true]{background:var(--struct);border-color:var(--struct);color:var(--col)}
 .in{font-size:.8125rem;color:var(--muted)}
 :root{--q-bg:var(--col);--q-fg:var(--text);--q-line:var(--line);--q-muted:var(--muted);--q-chip:var(--hover)}
 .banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 16px;margin-bottom:20px;
@@ -1187,6 +1186,7 @@ fieldset.field{border:0;padding:0;margin:0 0 16px}
 .field em{font-style:italic;font-weight:400}
 .field input{font:inherit;font-size:1rem;color:var(--text);background:var(--bg);border:1px solid var(--edge);border-radius:8px;padding:10px 12px;min-height:44px;min-width:0;width:100%}
 .field input:focus{border-color:var(--struct);outline:2px solid var(--focus);outline-offset:1px}
+.field select{font:inherit;font-size:1rem;color:var(--text);background:var(--bg);border:1px solid var(--edge);border-radius:8px;padding:10px 12px;min-height:44px;width:100%}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-error{font-size:1rem;color:var(--accent);margin-bottom:8px}.form-error:empty{display:none}
 .actions-row{display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:8px}
@@ -1278,6 +1278,7 @@ TOOLS_CSS = """
  font-size:1rem;text-align:left;color:var(--menu-fg);background:none;border:0;border-radius:8px;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--menu-hover);outline:none}
 .menu kbd{font:inherit;font-size:.8125rem;opacity:.7}
+#add-form.locked :disabled{opacity:.72;cursor:default}
 #keys .keys-all{columns:2 260px;column-gap:40px}#keys .keys-all dl{break-inside:avoid;margin-bottom:16px}#keys .keys-all h4{break-after:avoid}
 /* quick write: one line in the middle of the window, and chips for what was understood */
 .quick{width:min(640px,calc(100vw - 32px));margin:20vh auto auto;padding:0;border:1px solid var(--q-line);border-radius:14px;
@@ -1759,8 +1760,8 @@ function bindBoard(){
     var open=btn.getAttribute('aria-expanded')!=='true';btn.setAttribute('aria-expanded',open);
     btn.textContent=open?'Hide details':'Details';
     document.getElementById(btn.getAttribute('aria-controls')).hidden=!open;});});
-  document.querySelectorAll('.act.edit').forEach(function(btn){btn.addEventListener('click',function(){
-    var li=btn.closest('.row');openItemForm(JSON.parse(li.dataset.manual),li.dataset.id);});});
+  document.querySelectorAll('.act.edit,.act.whatis').forEach(function(btn){btn.addEventListener('click',function(){
+    openDetails(btn.closest('.row'));});});
   document.querySelectorAll('.act.del').forEach(function(btn){btn.addEventListener('click',function(){
     if(!btn.dataset.armed){btn.dataset.armed='1';btn.textContent='Click again to delete';
       setTimeout(function(){delete btn.dataset.armed;btn.textContent='Delete';},4000);return;}
@@ -1770,8 +1771,6 @@ function bindBoard(){
         .then(function(){return refreshBoard({id:r.item.id,part:'.tick'});}).then(function(){toast('Put back “'+name+'”');})
         .catch(function(err){toast("Couldn't undo: "+err.message);});});});})
       .catch(function(err){toast(err.message);});});});
-  document.querySelectorAll('.act.whatis').forEach(function(btn){btn.addEventListener('click',function(){
-    var li=btn.closest('.row');askKind(li.dataset.id,li.querySelector('.t').firstChild.textContent,btn.dataset.what);});});
   /* Archive: any item, out of the way until you want it; it waits in Archived */
   document.querySelectorAll('.act.arch').forEach(function(btn){btn.addEventListener('click',function(){
     var li=btn.closest('.row'),id=li.dataset.id;
@@ -1847,6 +1846,9 @@ function wireMenu(){var m=menuParts();if(!m.btn)return;
     else if(k===' '){if(document.activeElement)document.activeElement.click();}else return;   /* Space presses the item, as in any menu */
     ev.preventDefault();ev.stopPropagation();});}
 document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.tools'))closeMenu(false);});
+/* double-click a card (not its link, tick box or buttons) for its details */
+wrap.addEventListener('dblclick',function(ev){var li=ev.target.closest('.row[data-id]');
+  if(li&&!ev.target.closest('a,button,input,label,summary'))openDetails(li);});
 function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
   var p=s.progress,text=p?p.text:s.status,t=st.querySelector('.st'),bar=st.querySelector('.scan-bar');
   if(t&&typeof text==='string'&&t.textContent!==text)t.textContent=text;
@@ -1862,7 +1864,7 @@ function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
   var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
   if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
   else bar.removeAttribute('aria-valuenow');}
-function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||quick.open||keysDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||quick.open||keysDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
   var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
 function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
@@ -1892,7 +1894,7 @@ wrap.addEventListener('keydown',function(ev){
   else if(k==='o'||k==='O'||(k==='Enter'&&ev.target.classList.contains('tick'))){var a=row.querySelector('a.t');if(a){ev.preventDefault();a.click();}return;}
   else if(k==='a'||k==='A')return act('.act.arch,.act.show');
   else if(k==='x'||k==='X')return act('.tick');
-  else if(k==='e'||k==='E')return act('.act.edit,.act.whatis');
+  else if(k==='e'||k==='E'){if(LIVE){ev.preventDefault();openDetails(row);}return;}
   else return;
   ev.preventDefault();if(go)focusRow(go);});
 document.addEventListener('keydown',function(ev){
@@ -1943,22 +1945,10 @@ quick.addEventListener('click',function(ev){if(ev.target===quick)quick.close();}
   document.getElementById('update-check').addEventListener('click',function(){msg.textContent='Checking…';
     api('/api/update',{check:true}).then(show).catch(function(e){msg.textContent=e.message;});});
   go.addEventListener('click',function(){closeSheet(settings);updateNow();});})();
-/* "What is this?": you say what an item is; it goes for its series in that course too */
-var kindDlg=document.getElementById('kind-dialog'),kindId=null;
-function askKind(id,title,what){kindId=id;kindDlg.querySelector('.kind-name').textContent=title;
-  kindDlg.querySelectorAll('[data-what]').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.what===what?'true':'false');});
-  kindDlg.showModal();}
-kindDlg.querySelectorAll('[data-what]').forEach(function(b){b.addEventListener('click',function(){
-  var id=kindId;
-  api('/api/kind',{id:id,what:b.dataset.what}).then(function(r){closeSheet(kindDlg);
-    var a=/^[aeiou]/.test(r.what)?'an ':'a ';
-    toast('Marked as '+a+r.what+(r.also?', with '+r.also+' more like it in that course.':'.'));
-    return refreshBoard({id:id,part:'.act.whatis'});})
-  .catch(function(e){toast(e.message);});});});
 var keysDlg=document.getElementById('keys');
 function openKeys(){if(!document.querySelector('dialog[open]'))keysDlg.showModal();}
 document.getElementById('show-keys').addEventListener('click',function(){settings.close();openKeys();});
-[settings,itemDlg,kindDlg,keysDlg].forEach(function(d){
+[settings,itemDlg,keysDlg].forEach(function(d){
   d.addEventListener('click',function(ev){if(ev.target===d)closeSheet(d);});
   d.addEventListener('cancel',function(ev){ev.preventDefault();closeSheet(d);});   /* Esc */
   d.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){closeSheet(d);});});
@@ -1975,21 +1965,46 @@ setTabs.forEach(function(t,i){t.addEventListener('click',function(){showTab(t);}
 
 /* add / edit your own items (one form; editing just fills it in first) */
 var editing=null,editFields=null;
+/* The details sheet. Yours: every field can be changed. From one of your sites: shown but locked, except what it
+   is, which you can say, and your answer goes for the others like it in that course. */
+var lockedId=null,LOCKABLE=['title','date','time','course','label','notes'];
+function lockForm(on,from){LOCKABLE.forEach(function(n){itemForm.elements[n].disabled=on;});
+  itemForm.querySelector('button[type=submit]').hidden=on;itemForm.classList.toggle('locked',on);
+  itemForm.querySelector('[data-close].act:not(.sheet-head *)').textContent=on?'Close':'Cancel';
+  var note=document.getElementById('locked-note');note.hidden=!on;
+  note.textContent=on?'This came from '+from+', so its title, day and class are set there. What it is, you can change: '
+    +'your answer sticks, and goes for the others like it in the same course (the same lead-in, such as “Biochemical Testing - …”).':'';}
+function openDetails(li){if(!li||!LIVE)return;
+  if(li.dataset.manual){openItemForm(JSON.parse(li.dataset.manual),li.dataset.id);return;}
+  if(!li.dataset.details)return;
+  var d=JSON.parse(li.dataset.details),f=itemForm.elements;editing=null;editFields=null;lockedId=li.dataset.id;
+  itemForm.querySelector('.form-error').textContent='';document.getElementById('add-title').textContent='Details';
+  f.title.value=d.title;f.kind.value=d.kind;f.date.value=d.date;f.time.value=d.time;f.course.value=d.course;f.label.value='';f.notes.value=d.notes;
+  itemForm.dataset.lastMode='edit';lockForm(true,d.from);itemDlg.showModal();
+  (itemForm.querySelector('input[name=kind]:checked')||f.kind[0]).focus();}
+itemForm.querySelectorAll('input[name=kind]').forEach(function(r){r.addEventListener('change',function(){
+  if(!lockedId||!itemForm.classList.contains('locked'))return;var id=lockedId;
+  api('/api/kind',{id:id,what:r.value}).then(function(k){closeSheet(itemDlg);
+    var a=/^[aeiou]/.test(k.what)?'an ':'a ';
+    toast('Marked as '+a+k.what+(k.also?', with '+k.also+' more like it in that course.':'.'));
+    return refreshBoard({id:id,part:'.act.whatis'});})
+  .catch(function(e){itemForm.querySelector('.form-error').textContent=e.message;});});});
 function openItemForm(fields,id){
-  var f=itemForm.elements;editing=id;editFields=fields;
+  var f=itemForm.elements;editing=id;editFields=fields;lockedId=null;lockForm(false);
   itemForm.querySelector('.form-error').textContent='';
-  document.getElementById('add-title').textContent=id?'Edit item':'Add item';
+  document.getElementById('add-title').textContent=id?'Details':'Add item';
   itemForm.querySelector('button[type=submit]').textContent=id?'Save changes':'Add item';
   if(fields){f.title.value=fields.title;f.kind.value=fields.kind;f.date.value=fields.date;f.time.value=fields.time;
-    f.course.value=fields.course;f.notes.value=fields.notes;}
+    f.course.value=fields.course;f.notes.value=fields.notes;f.label.value=fields.label||'';}
   else if(itemForm.dataset.lastMode==='edit'){itemForm.reset();}
   itemForm.dataset.lastMode=id?'edit':'add';
   itemDlg.showModal();f.title.focus();
 }
 itemForm.addEventListener('submit',function(ev){
   ev.preventDefault();
+  if(itemForm.classList.contains('locked'))return;
   var f=itemForm.elements,err=itemForm.querySelector('.form-error'),data={title:f.title.value.trim(),kind:f.kind.value,
-    date:f.date.value,time:f.time.value,course:f.course.value.trim(),notes:f.notes.value.trim()};
+    date:f.date.value,time:f.time.value,course:f.course.value.trim(),notes:f.notes.value.trim(),label:f.label.value};
   if(!data.title){err.textContent='Give the item a title.';f.title.focus();return;}
   if(!data.date){err.textContent='Pick a due date.';f.date.focus();return;}
   if(editing)data.id=editing;

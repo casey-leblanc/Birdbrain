@@ -52,7 +52,7 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
 - [x] 2. The reader for what a student types (`quickwrite.py`), with a table test of 60+ phrases
 - [x] 3. Quick write in the window: Space, chips for what was understood, Enter, Ctrl+Enter, Esc, Backspace
 - [x] 4. Space no longer ticks: X ticks, E opens details, ? shows every key; arrows and J/K across day groups
-- [ ] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
+- [x] 5. Fill in later: the details sheet for personal cards, and (locked) for scraped ones with "What is this?"
 - [ ] 6. System-wide hotkey on Windows (Ctrl+Alt+Space), changeable, with a small always-on-top quick write
 - [ ] 7. Labels: four to begin with plus your own, tags on cards, filter by tag, Settings › Labels
 - [ ] 8. Keyboard-only UI test of the whole thing, under a second of the page's own time
@@ -79,3 +79,6 @@ Work on the `birdbrain-experimental` branch, based on Birdbrain 1.1.2. `[x]` don
   the corner menu, Space presses the menu item as menus do.
 - `?` opens its own sheet with every key, in two columns so it fits one screen; Settings › App points to it.
   Until the details sheet arrives (item 5), E opens the edit form for your own items and "What is this?" for others.
+- One details sheet for every card (the old Add item form, with a Label field). A card from one of your sites opens
+  it locked; its Type is the one live control and is "What is this?". The separate dialog is gone. The "?" on a
+  card, E, and a double-click all open it.

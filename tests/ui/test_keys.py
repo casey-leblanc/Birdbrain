@@ -48,9 +48,10 @@ class Keys(PageTest):
         self.assertEqual(self.page.locator("#add-form [name=title]").input_value(), "Dentist")
         self.page.keyboard.press("Escape")
         self.page.locator("#add-item").wait_for(state="hidden")
-        self.row("Exam 2").locator(".tick").focus()             # one from Moodle: what it is
+        self.row("Exam 2").locator(".tick").focus()             # one from Moodle: the same sheet, locked
         self.page.keyboard.press("e")
-        self.page.locator("#kind-dialog").wait_for(state="visible")
+        self.page.locator("#add-item").wait_for(state="visible")
+        self.assertTrue(self.page.locator("#add-form [name=title]").is_disabled())
 
     def test_question_mark_shows_every_key_on_one_screen(self):
         self.page.keyboard.press("?")

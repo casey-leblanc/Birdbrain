@@ -61,9 +61,11 @@ with a dotted underline opens the item in Moodle or Outlook.
 - **Tick it off** and it moves to **Completed**. Undo is offered for 6 seconds (or press Ctrl+Z).
 - **Archive** hides a card you don't need (point at the card, or tab to it). It waits under **Archived**, where
   **Show on list** brings it back.
-- **?** on a card opens **What is this?** if Birdbrain has it wrong: say it is an assignment, a quiz, an exam or
-  an event. Your answer sticks, and it also goes for the others like it in the same course. Say once that
-  "Biochemical Testing - Oxidase Test" is an assignment, and every "Biochemical Testing - …" lab follows.
+- **Details**: press **E** on a card, double-click it, or use its **?**. For something you added, every field can
+  be changed: title, type, day, time, class, label, notes. For something from Moodle or your email, the fields are
+  shown but locked, except **what it is**: say it is an assignment, a quiz, an exam or an event, and your answer
+  sticks. It also goes for the others like it in the same course. Say once that "Biochemical Testing - Oxidase
+  Test" is an assignment, and every "Biochemical Testing - …" lab follows.
 - **Your own items**: press **Space** and type. See **Quick write** below. A card you added has **Details**,
   with Edit and Delete.
 
@@ -150,7 +152,7 @@ To install a build you downloaded yourself: `Birdbrain.exe --install-update <the
 A few things worth knowing:
 
 - The word "test" alone doesn't make an exam. A lab called "Oxidase Test" is an assignment, and "Exam 2 Review"
-  is not the exam. If the rules still get one wrong, the **?** on the card fixes it for good.
+  is not the exam. If the rules still get one wrong, the card's details (E) fix it for good.
 - A receipt is never listed as work: "Successfully submitted to HW3", or a grade being posted.
 - Moodle's own reminder emails, and a Gradescope or Connect copy of the same Moodle assignment, are filed under
   Archived as duplicates, so each piece of work is listed once.
@@ -174,7 +176,7 @@ it; Birdbrain keeps scanning. Quit stops it.
 ## If something goes wrong
 
 - **Nothing new is showing up.** Look at the dot: red means a site needs signing in to, or couldn't be reached.
-- **A card is the wrong kind.** Use **?** on the card.
+- **A card is the wrong kind.** Press E on the card and say what it is.
 - **A card shouldn't be there.** Archive it, or add a keyword for the whole kind of thing.
 - **The window won't open.** Start `Birdbrain.exe` again: it brings the running copy's window forward.
 - The menu's Settings › App has **Open log**, which says what each scan did.

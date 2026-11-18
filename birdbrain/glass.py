@@ -153,7 +153,6 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 .btn{min-height:44px;padding:0 18px;font-weight:600}
 .btn.primary{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn.primary:hover{background:#fff;color:#1C2230}
-.kind-name{font-weight:700;margin:0 0 12px}
 .in{font-size:.8125rem;color:var(--g-t2)}
 :root{--q-bg:var(--g-sheet);--q-fg:#fff;--q-line:var(--g-edge);--q-muted:var(--g-t2);--q-chip:rgba(255,255,255,.16)}
 .quick{-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
@@ -161,7 +160,6 @@ p,h1,h2,h3,ul{margin:0;padding:0}ul{list-style:none}
 .banner{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:12px 24px;
  border:1px solid var(--g-red);border-radius:8px;background:rgba(255,133,119,.16)}
 .banner p{margin:0;flex:1 1 20rem}
-.kind-choices .btn[aria-pressed=true]{background:rgba(255,255,255,.9);color:#1C2230;border-color:transparent}
 .btn:disabled{opacity:.55;cursor:default}
 
 /* the three columns */
@@ -357,6 +355,8 @@ fieldset.field{border:0;padding:0;margin:0 0 1rem}
 .field em{font-style:italic;font-weight:400}
 .field input,.nick{font:inherit;font-size:1rem;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:10px 12px;min-height:44px;min-width:0;width:100%}
 .field input:focus,.nick:focus{border-color:#fff;outline:2px solid var(--g-focus);outline-offset:1px}
+.field select{font:inherit;font-size:1rem;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:10px 12px;min-height:44px;width:100%}
+.field select option{color:#1C2230;background:#fff}
 .nick::placeholder,.field input::placeholder{color:rgba(255,255,255,.7)}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-error{font-size:1rem;color:#FFC2B8;margin-bottom:.6rem}.form-error:empty{display:none}
