@@ -303,7 +303,8 @@ def _row(i: Item, when: str, now: datetime, courses: dict, kinds: bool = True,
     if not (reason or done) and (due := urgency(i, now)):
         fields += f' data-due="{due}"'
     return (f'<li class="{classes}" data-id="{e(i.id)}"{fields}><label class="tickwrap">'
-            f'<input class="tick" type="checkbox"{checked} aria-label="{"Not done" if done else "Done"}: {e(title)}"'
+            f'<input class="tick" type="checkbox"{checked} title="{"Untick" if done else "Tick off"} (X)" aria-keyshortcuts="X" '
+            f'aria-label="{"Not done" if done else "Done"}: {e(title)}"'
             f'{desc}>'
             f'</label><div class="body">{name}<p class="meta">{meta}</p>{said}{tail}</div></li>')
 
@@ -603,23 +604,37 @@ SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Course
 
 # Keyboard shortcuts. Each entry: the keys (alternatives, each a combination) and what they do. The first group works
 # whenever no window is open and you aren't typing; the second while an item has focus.
-KEYS = (("Anywhere", ((("N",),), "Add an item"), ((("S",),), "Open Settings"), ((("R",),), "Scan now"), ((("M",),), "Open the menu"),
-         ((("J",),), "Go to the first item"), ((("?",),), "Show these shortcuts"),
-         ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
+KEYS = (("Anywhere", ((("Space",),), "Quick write: add something"), ((("M",),), "Open the menu"), ((("S",),), "Open Settings"),
+         ((("R",),), "Scan now"), ((("N",),), "Add an item with the full form"), ((("J",),), "Go to the first item"),
+         ((("?",),), "Show these keys"), ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
         ("On an item", ((("↓",), ("J",)), "Next item"), ((("↑",), ("K",)), "Previous item"),
-         ((("←",), ("→",)), "The column beside"), ((("O",),), "Open it in Moodle or Outlook"),
-         ((("A",),), "Archive it, or show it again"), ((("E",),), "Edit one you added"),
-         ((("Space",),), "Tick it off")))
+         ((("←",), ("→",)), "The column beside"), ((("X",),), "Tick it off, or untick it"),
+         ((("E",),), "Its details"), ((("O",),), "Open it in Moodle or Outlook"),
+         ((("A",),), "Archive it, or show it again")),
+        ("In quick write", ((("Enter",),), "Save"), ((("Ctrl", "Enter"),), "Save and add another"),
+         ((("Backspace",),), "Right after a word it read: keep that word as plain text")))
+
+
+def _key_groups() -> str:
+    def keys(alts):
+        return '<span class="or">or</span>'.join("+".join(f"<kbd>{k}</kbd>" for k in combo) for combo in alts)
+    return "".join(f'<h4 class="sub">{e(name)}</h4><dl class="keys">'
+                   + "".join(f'<div><dt>{keys(alts)}</dt><dd>{e(what)}</dd></div>' for alts, what in rows) + '</dl>'
+                   for name, *rows in KEYS)
+
+
+def _keys_dialog() -> str:
+    """Every key on one screen: what ? shows."""
+    return ('<dialog id="keys" class="sheet-dialog" aria-labelledby="keys-title"><div class="sheet">'
+            '<div class="sheet-head"><h2 id="keys-title">Keys</h2>'
+            f'<button type="button" class="act" data-close>Close</button></div><div class="keys-all">{_key_groups()}</div>'
+            '<p class="hint">Single keys work whenever no window is open and you aren\'t typing.</p></div></dialog>')
 
 
 def _keys() -> str:
-    def keys(alts):
-        return '<span class="or">or</span>'.join("+".join(f"<kbd>{k}</kbd>" for k in combo) for combo in alts)
-    groups = "".join(f'<h4 class="sub">{e(name)}</h4><dl class="keys">'
-                     + "".join(f'<div><dt>{keys(alts)}</dt><dd>{e(what)}</dd></div>' for alts, what in rows) + '</dl>'
-                     for name, *rows in KEYS)
-    return (f'<div class="set-sec" id="keys-sec"><h3>Keyboard</h3>{groups}'
-            '<p class="hint">Single keys work whenever no window is open and you aren\'t typing.</p></div>')
+    return ('<div class="set-sec" id="keys-sec"><h3>Keyboard</h3><p class="hint">Press <kbd>?</kbd> anywhere on your list '
+            'to see every key on one screen.</p><div class="btn-row"><button type="button" class="btn" id="show-keys">'
+            'Show the keys</button></div></div>')
 
 
 def _updates(update: dict | None) -> str:
@@ -830,7 +845,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
-        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now)}{_kind_dialog()}{_quick_dialog()}',
+        f'</div>{_settings_dialog(b, now, layout, photo, settings, prefs, update)}{_item_dialog(b, now)}{_kind_dialog()}{_quick_dialog()}{_keys_dialog()}',
         '<div id="toast" role="status" aria-live="polite"></div><p id="announce" class="sr" aria-live="polite"></p>',
         '<div class="gscroll" aria-hidden="true"><i></i></div>',
         _TITLEBAR if app_window and token else "",
@@ -1263,6 +1278,7 @@ TOOLS_CSS = """
  font-size:1rem;text-align:left;color:var(--menu-fg);background:none;border:0;border-radius:8px;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--menu-hover);outline:none}
 .menu kbd{font:inherit;font-size:.8125rem;opacity:.7}
+#keys .keys-all{columns:2 260px;column-gap:40px}#keys .keys-all dl{break-inside:avoid;margin-bottom:16px}#keys .keys-all h4{break-after:avoid}
 /* quick write: one line in the middle of the window, and chips for what was understood */
 .quick{width:min(640px,calc(100vw - 32px));margin:20vh auto auto;padding:0;border:1px solid var(--q-line);border-radius:14px;
  background:var(--q-bg);color:var(--q-fg);box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:visible}
@@ -1846,7 +1862,7 @@ function paintStatus(s){var st=wrap.querySelector('.status');if(!st)return;
   var known=typeof p.value==='number';bar.classList.toggle('busy',!known);bar.setAttribute('aria-valuetext',text);
   if(known){bar.setAttribute('aria-valuenow',Math.round(p.value*100));bar.firstChild.style.setProperty('--p',p.value);}
   else bar.removeAttribute('aria-valuenow');}
-function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||quick.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
+function canRefresh(){if(document.hidden||settings.open||itemDlg.open||kindDlg.open||quick.open||keysDlg.open||document.querySelector('#app-menu:not([hidden])')||document.querySelector('.row.leaving'))return false;
   var a=document.activeElement;return !(a&&wrap.contains(a)&&a.matches(':focus-visible'));}   /* moving through the list by keyboard */
 function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   if(document.hidden&&Date.now()>fastUntil){pollT=setTimeout(watchStatus,5000);return;}
@@ -1858,7 +1874,7 @@ function watchStatus(){if(!LIVE)return;clearTimeout(pollT);
   .catch(function(){pollT=setTimeout(watchStatus,20000);});}
 /* Single-key shortcuts (N, S, R, ?): only while no window is open and you aren't typing, and never with Ctrl or Alt */
 var SHORTCUTS={n:function(){if(LIVE)openItemForm(null,null);},s:function(){openSettings();},
-  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},j:function(){focusRow(listRows()[0]);},'?':function(){openSettings('app','keys-sec');}};
+  r:function(){if(LIVE)scanNow();},m:function(){if(LIVE)openMenu();},' ':function(){openQuick();},j:function(){focusRow(listRows()[0]);},'?':function(){openKeys();}};
 /* On an item: ↓/J and ↑/K to the next and previous item (through the columns, then any open bin), ←/→ to the first item
    of the column beside, O (or Enter on its tick box) opens it, A archives it or shows it again, E edits one you added. */
 function listRows(){return [].slice.call(wrap.querySelectorAll('.row[data-id]')).filter(function(r){return r.offsetParent!==null;});}
@@ -1875,7 +1891,8 @@ wrap.addEventListener('keydown',function(ev){
     for(var j=b+step;j>=0&&j<boxes.length&&!go;j+=step)go=boxes[j].querySelector('.row[data-id]');}
   else if(k==='o'||k==='O'||(k==='Enter'&&ev.target.classList.contains('tick'))){var a=row.querySelector('a.t');if(a){ev.preventDefault();a.click();}return;}
   else if(k==='a'||k==='A')return act('.act.arch,.act.show');
-  else if(k==='e'||k==='E')return act('.act.edit');
+  else if(k==='x'||k==='X')return act('.tick');
+  else if(k==='e'||k==='E')return act('.act.edit,.act.whatis');
   else return;
   ev.preventDefault();if(go)focusRow(go);});
 document.addEventListener('keydown',function(ev){
@@ -1938,7 +1955,10 @@ kindDlg.querySelectorAll('[data-what]').forEach(function(b){b.addEventListener('
     toast('Marked as '+a+r.what+(r.also?', with '+r.also+' more like it in that course.':'.'));
     return refreshBoard({id:id,part:'.act.whatis'});})
   .catch(function(e){toast(e.message);});});});
-[settings,itemDlg,kindDlg].forEach(function(d){
+var keysDlg=document.getElementById('keys');
+function openKeys(){if(!document.querySelector('dialog[open]'))keysDlg.showModal();}
+document.getElementById('show-keys').addEventListener('click',function(){settings.close();openKeys();});
+[settings,itemDlg,kindDlg,keysDlg].forEach(function(d){
   d.addEventListener('click',function(ev){if(ev.target===d)closeSheet(d);});
   d.addEventListener('cancel',function(ev){ev.preventDefault();closeSheet(d);});   /* Esc */
   d.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){closeSheet(d);});});

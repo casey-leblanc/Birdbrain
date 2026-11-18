@@ -98,19 +98,20 @@ the rest (class, notes) later from the card's Details.
 
 | Key | Does |
 |---|---|
-| N | Add an item |
+| Space | Quick write: add something |
+| M | The menu |
 | S | Settings |
 | R | Scan now |
-| M | The menu |
+| N | Add an item with the full form |
 | J | Go to the first item |
-| ↓ / J, ↑ / K | Next and previous item |
+| ↓ / J, ↑ / K | Next and previous item, through every day |
 | ← / → | The column beside |
+| X | Tick the item off, or untick it |
+| E | The item's details |
 | O | Open the item in Moodle or Outlook |
 | A | Archive it, or show it again |
-| E | Edit one you added |
-| Space | Tick it off |
 | Ctrl+Z | Undo the last change |
-| ? | Show these keys |
+| ? | Show every key on one screen |
 | Esc | Close a window |
 
 ## Settings
