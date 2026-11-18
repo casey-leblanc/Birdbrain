@@ -163,6 +163,15 @@ class Scripts(unittest.TestCase):
                 got = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
                 self.assertEqual(got.returncode, 0, got.stderr[-600:])
 
+    def test_no_function_in_a_page_script_is_declared_twice(self):
+        """A second `function name(){}` silently replaces the first, wherever in the script each one is."""
+        import re
+        from collections import Counter
+        for name in ("JS", "CHROME_JS", "SETUP_JS", "QUICK_PAGE_JS"):
+            with self.subTest(script=name):
+                names = Counter(re.findall(r"(?m)^function (\w+)\(", getattr(report, name)))
+                self.assertEqual([n for n, c in names.items() if c > 1], [])
+
 
 if __name__ == "__main__":
     unittest.main()

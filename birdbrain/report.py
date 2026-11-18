@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 import custom
+import dragdrop
 import filters
 import glass
 import motion
@@ -635,18 +636,19 @@ SETTINGS_TABS = (("look", "Look"), ("scanning", "Scanning"), ("courses", "Course
 KEYS = (("Anywhere", ((("Space",),), "Quick write: add something"), ((("M",),), "Open the menu"), ((("S",),), "Open Settings"),
          ((("R",),), "Scan now"), ((("N",),), "Add an item with the full form"), ((("J",),), "Go to the first item"),
          ((("#",), ("@",)), "Show only one label or class"), ((("?",),), "Show these keys"), ((("Ctrl", "Z"),), "Undo the last change"), ((("Esc",),), "Close a window")),
+        ("In quick write", ((("Enter",),), "Save"), ((("Ctrl", "Enter"),), "Save and add another"),
+         ((("Backspace",),), "Right after a word it read: keep that word as plain text")),
         ("On an item", ((("↓",), ("J",)), "Next item"), ((("↑",), ("K",)), "Previous item"),
          ((("←",), ("→",)), "The column beside"), ((("X",),), "Tick it off, or untick it"),
          ((("E",),), "Its details"), ((("O",),), "Open it in Moodle or Outlook"),
-         ((("A",),), "Archive it, or show it again")),
-        ("In quick write", ((("Enter",),), "Save"), ((("Ctrl", "Enter"),), "Save and add another"),
-         ((("Backspace",),), "Right after a word it read: keep that word as plain text")))
+         ((("A",),), "Archive it, or show it again"), ((("D",),), "Send it to Completed"),
+         ((("M",),), "Pick it up to move: arrows, then Enter")))
 
 
 def _key_groups() -> str:
     def keys(alts):
         return '<span class="or">or</span>'.join("+".join(f"<kbd>{k}</kbd>" for k in combo) for combo in alts)
-    return "".join(f'<h4 class="sub">{e(name)}</h4><dl class="keys">'
+    return "".join(f'<h4 class="sub{" col" if name == "On an item" else ""}">{e(name)}</h4><dl class="keys">'
                    + "".join(f'<div><dt>{keys(alts)}</dt><dd>{e(what)}</dd></div>' for alts, what in rows) + '</dl>'
                    for name, *rows in KEYS)
 
@@ -912,7 +914,7 @@ def render(b: Board, settings: Settings, status: str, now: datetime, token: str 
         f'<meta name="birdbrain-token" content="{e(token)}">' if token else "",
         f"<title>Birdbrain, {now:%a %b} {now.day}</title><script>{motion.HEAD_JS}{head_js}</script>",
         f"<style>{theme.font_face_css()}{theme.css_tokens()}{glass.css(photo) if glass_layout else CSS}"
-        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}</style>",
+        f"{motion.TOKENS_CSS}{TITLEBAR_CSS}{SCROLL_CSS}{TOOLS_CSS}{MOTION_CSS}{dragdrop.CSS}</style>",
         f'<style id="custom-css">{custom.css(prefs, photo)}</style></head>',
         f'<body class="{"live" if token else "static"}"><div class="wrap">',
         render_board(b, settings, status, now, version, prefs, progress, sign_in),
@@ -1416,7 +1418,7 @@ TOOLS_CSS = """
 .menu button:hover,.menu button:focus-visible{background:var(--menu-hover);outline:none}
 .menu kbd{font:inherit;font-size:.8125rem;opacity:.7}
 #add-form.locked :disabled{opacity:.72;cursor:default}
-#keys .keys-all{columns:2 260px;column-gap:40px}#keys .keys-all dl{break-inside:avoid;margin-bottom:16px}#keys .keys-all h4{break-after:avoid}
+#keys{width:min(780px,calc(100vw - 32px))}#keys .keys-all{columns:2 260px;column-gap:40px}#keys .keys-all dl{break-inside:avoid;margin-bottom:16px}#keys .keys-all h4{break-after:avoid}#keys .keys-all h4.col{break-before:column}
 /* quick write: one line in the middle of the window, and chips for what was understood */
 .quick{width:min(640px,calc(100vw - 32px));margin:20vh auto auto;padding:0;border:1px solid var(--q-line);border-radius:14px;
  background:var(--q-bg);color:var(--q-fg);box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:visible}
@@ -1693,11 +1695,34 @@ function restoreFocus(f){if(!f)return;var el=null;
   if(el)el.focus();}
 /* The status line is rebuilt too, so a new problem (not just a new "Updated" time) is read out from a region that stays. */
 function problemText(){var p=wrap.querySelector('.status.problem .st');return p?p.textContent.replace(/^Updated [^.]*\\.\\s*/,''):'';}
+/* Rebuild the list from fresh HTML, touching only what changed. A card that is still on the list stays the same
+   element wherever it has moved to, so it keeps the focus and any motion it's in the middle of, and the browser lays
+   out only what's new: with a few hundred cards that is the difference between a stutter and nothing at all.
+   Cards, day groups and anything with an id are matched by name; the rest by position. */
+function nameOf(n){if(n.nodeType!==1)return null;
+  return n.dataset.id&&n.classList.contains('row')?'row:'+n.dataset.id:n.dataset.day?n.tagName+':'+n.dataset.day:n.id?'#'+n.id:null;}
+function morph(old,neu,keyed){var at=old.firstChild;
+  [].slice.call(neu.childNodes).forEach(function(n){var k=nameOf(n),m=null,i,a;
+    if(k){m=keyed[k]||null;delete keyed[k];if(m&&m.tagName!==n.tagName)m=null;}
+    else if(at&&at.nodeType===n.nodeType&&!nameOf(at)&&(n.nodeType!==1||at.tagName===n.tagName))m=at;
+    if(!m){old.insertBefore(n,at);return;}
+    if(m===at)at=at.nextSibling;else old.insertBefore(m,at);
+    if(n.nodeType!==1){if(m.nodeValue!==n.nodeValue)m.nodeValue=n.nodeValue;return;}
+    if(m.isEqualNode(n))return;
+    for(i=m.attributes.length-1;i>=0;i--){a=m.attributes[i].name;if(!n.hasAttribute(a))m.removeAttribute(a);}
+    for(i=0;i<n.attributes.length;i++){a=n.attributes[i];if(m.getAttribute(a.name)!==a.value)m.setAttribute(a.name,a.value);}
+    morph(m,n,keyed);});
+  while(at){var next=at.nextSibling;old.removeChild(at);at=next;}}
+function rebuild(html){var t=document.createElement('template'),keyed={};t.innerHTML=html;
+  wrap.querySelectorAll('.row[data-id],[data-day],[id]').forEach(function(el){var k=nameOf(el);if(k)keyed[k]=el;});
+  morph(wrap,t.content,keyed);
+  wrap.querySelectorAll('.tick').forEach(function(b){b.checked=b.hasAttribute('checked');});}   /* a box that was clicked stops following its attribute */
 var said=null;   /* the problem last read out (a scan's progress replaces it on screen for a while) */
 function refreshBoard(focus,opts){var f=focus||focusTarget(),o=opts||{};if(said===null)said=problemText();
+  var flow=o.glide||CALM.matches;   /* unless the caller has its own picture of before, everything glides from where it was */
   return fetch('/board?token='+encodeURIComponent(TOKEN)).then(function(r){
     if(!r.ok)throw new Error(GONE);return r.text();})
-  .then(function(h){wrap.innerHTML=h;bindBoard();if(o.glide)glide(o.glide,o.skip);restoreFocus(f);
+  .then(function(h){var was=flow?null:layout();rebuild(h);bindBoard();if(o.glide)glide(o.glide,o.skip);else if(was)glide(was);restoreFocus(f);
     var p=problemText();if(p&&p!==said)document.getElementById('announce').textContent=wrap.querySelector('.status .st').textContent;
     said=p;lastRefresh=Date.now();});
 }
@@ -1774,12 +1799,14 @@ function home(id,from){if(!from||CALM.matches)return;
 var GLIDE='.bands .row[data-id],.bands .grp,.bands .dayclear,.bands .clear,.bands .empty';
 function keyOf(el){if(el.dataset.id)return 'r'+el.dataset.id;
   var b=el.closest('.band');return (b?b.getAttribute('aria-labelledby'):'')+'|'+el.className+'|'+(el.classList.contains('grp')?el.textContent:'');}
-function layout(){var m={};wrap.querySelectorAll(GLIDE).forEach(function(el){m[keyOf(el)]=rectOf(el).top;});return m;}
-function glide(before,skip){wrap.querySelectorAll(GLIDE).forEach(function(el){if(skip&&el.dataset.id===skip)return;
-  var k=keyOf(el);
-  if(k in before){var dy=before[k]-rectOf(el).top;
-    if(Math.abs(dy)>1)el.animate([{transform:'translateY('+dy+'px)'},{transform:'none'}],{duration:MS.slow,easing:EASE.out});}
-  else el.animate([{opacity:0},{opacity:1}],{duration:MS.base,delay:MS.fast,easing:EASE.out,fill:'backwards'});});}
+function layout(){var m={};wrap.querySelectorAll(GLIDE).forEach(function(el){if(el.hidden)return;var r=rectOf(el);if(r.height)m[keyOf(el)]=r.top;});return m;}
+/* only what can be seen moves: a card that starts and ends far outside the window just arrives */
+function glide(before,skip){var lo=-240,hi=innerHeight+240;
+  wrap.querySelectorAll(GLIDE).forEach(function(el){if(el.hidden||(skip&&el.dataset.id===skip))return;
+  var k=keyOf(el),top=rectOf(el).top;
+  if(k in before){var dy=before[k]-top;
+    if(Math.abs(dy)>1&&((top>lo&&top<hi)||(before[k]>lo&&before[k]<hi)))el.animate([{transform:'translateY('+dy+'px)'},{transform:'none'}],{duration:MS.slow,easing:EASE.out});}
+  else if(top>lo&&top<hi)el.animate([{opacity:0},{opacity:1}],{duration:MS.base,delay:MS.fast,easing:EASE.out,fill:'backwards'});});}
 /* The bins open and close in place: a bin grows down out of its heading to show its items, or folds back up into
    it. Each keeps its own column, so nothing else on the page moves; a closing bin stays open until it has folded
    away. With reduced motion they just open and close. */
@@ -1877,12 +1904,19 @@ function saveCourse(code){pendingCourses[code]=PREFS.courses[code]||null;clearTi
   courseTimer=setTimeout(function(){var p=pendingCourses;pendingCourses={};savePrefs({courses:p});},400);}
 
 /* --- the board (re-bound after every refresh) ----------------------------- */
+/* What the list answers to. One listener of each kind sits on the list itself, so a card needs no wiring of its own
+   and keeps working however often the list is rebuilt around it (see morph). */
+function on(type,sel,fn,capture){wrap.addEventListener(type,function(ev){
+  var el=ev.target.closest?ev.target.closest(sel):null;if(el&&wrap.contains(el))fn(el,ev);},!!capture);}
 function bindBoard(){
   applyFilter();   /* a filter stays on when the list is rebuilt */
-  document.querySelectorAll('.row[data-id] .tick').forEach(function(box){
+  if(!LIVE)wrap.querySelectorAll('.row[data-id] .tick').forEach(function(box){
+    box.disabled=true;box.title='Open the list from the Birdbrain icon to tick items off';});
+}
+on('change','.row[data-id] .tick',function(box){
     var li=box.closest('.row');
-    if(!LIVE){box.disabled=true;box.title='Open the list from the Birdbrain icon to tick items off';return;}
-    box.addEventListener('change',function(){
+    if(!LIVE)return;
+    {
       var done=box.checked,id=li.dataset.id,next=neighbour(li),left=todayLeft(),move=!CALM.matches,g=null,up=null,
           from=!done&&move?fromSpot(li):null,before=move?layout():null;
       if(done&&move){g=ghost(li);li.classList.add('lifted');up=lift(g);}   /* it lifts while Birdbrain saves */
@@ -1897,15 +1931,14 @@ function bindBoard(){
             toast(clear?'Moved to Completed. Nothing else is due today.':'Moved to Completed',function(){putBack(id);});}
           else{home(id,from);toast('Put back on your list',function(){tickAgain(id);});}
         }).catch(function(err){if(g)g.f.remove();box.checked=!done;li.classList.remove('leaving','lifted');toast("Couldn't save: "+err.message);});
-    });
-  });
-  document.querySelectorAll('.act.more').forEach(function(btn){btn.addEventListener('click',function(){
+    }
+});
+on('click','.act.more',function(btn){
     var open=btn.getAttribute('aria-expanded')!=='true';btn.setAttribute('aria-expanded',open);
     btn.textContent=open?'Hide details':'Details';
-    document.getElementById(btn.getAttribute('aria-controls')).hidden=!open;});});
-  document.querySelectorAll('.act.edit,.act.whatis').forEach(function(btn){btn.addEventListener('click',function(){
-    openDetails(btn.closest('.row'));});});
-  document.querySelectorAll('.act.del').forEach(function(btn){btn.addEventListener('click',function(){
+    document.getElementById(btn.getAttribute('aria-controls')).hidden=!open;});
+on('click','.act.edit,.act.whatis',function(btn){openDetails(btn.closest('.row'));});
+on('click','.act.del',function(btn){
     if(!btn.dataset.armed){btn.dataset.armed='1';btn.textContent='Click again to delete';
       setTimeout(function(){delete btn.dataset.armed;btn.textContent='Delete';},4000);return;}
     var li=btn.closest('.row'),name=titleOf(li);
@@ -1913,31 +1946,26 @@ function bindBoard(){
       toast('Deleted “'+name+'”',function(){api('/api/items/restore',r.item)
         .then(function(){return refreshBoard({id:r.item.id,part:'.tick'});}).then(function(){toast('Put back “'+name+'”');})
         .catch(function(err){toast("Couldn't undo: "+err.message);});});});})
-      .catch(function(err){toast(err.message);});});});
-  /* Archive: any item, out of the way until you want it; it waits in Archived */
-  document.querySelectorAll('.act.arch').forEach(function(btn){btn.addEventListener('click',function(){
+      .catch(function(err){toast(err.message);});});
+/* Archive: any item, out of the way until you want it; it waits in Archived */
+on('click','.act.arch',function(btn){
     var li=btn.closest('.row'),id=li.dataset.id;
     sendAway(li,'archived',function(){return api('/api/place',{id:id,how:'archived'});},'Moved to Archived',
-      function(r){return function(){bringBack(id,'archived',function(){return api('/api/place',{id:id,how:r.was});},'Back on your list');};});});});
-  /* Show on list: anything in Archived, whether you archived it or a keyword or duplicate did */
-  document.querySelectorAll('.act.show').forEach(function(btn){btn.addEventListener('click',function(){
+      function(r){return function(){bringBack(id,'archived',function(){return api('/api/place',{id:id,how:r.was});},'Back on your list');};});});
+/* Show on list: anything in Archived, whether you archived it or a keyword or duplicate did */
+on('click','.act.show',function(btn){
     var id=btn.closest('.row').dataset.id;
     bringBack(id,'archived',function(){return api('/api/place',{id:id,how:'shown'});},'Back on your list',
       function(r){return function(){var row=inList(id),call=function(){return api('/api/place',{id:id,how:r.was});};
         if(row)sendAway(row,'archived',call,'Moved to Archived');
-        else call().then(function(){return refreshBoard();}).then(function(){toast('Moved to Archived');}).catch(function(e){toast("Couldn't undo: "+e.message);});};});});});
-  document.querySelectorAll('.bin[data-bin]').forEach(function(d){
-    /* Browsers also fire "toggle" for a bin that is built already open; only save real changes,
-       or saving would bump the version and refresh the page in a loop. */
-    d.addEventListener('toggle',function(){if(!!PREFS.bins[d.dataset.bin]===d.open)return;
-      PREFS.bins[d.dataset.bin]=d.open;var b={};b[d.dataset.bin]=d.open;savePrefs({bins:b});});});
-  var dot=document.getElementById('status-dot');
-  if(dot)dot.addEventListener('click',scanNow);   /* while a scan runs it just says so */
-  wireMenu();
-  var signCard=document.getElementById('card-sign-in');
-  if(signCard)signCard.addEventListener('click',function(){api('/api/sign-in').then(function(){
-    toast("The sign-in window is opening. It closes by itself once you're signed in.");}).catch(function(e){toast(e.message);});});
-}
+        else call().then(function(){return refreshBoard();}).then(function(){toast('Moved to Archived');}).catch(function(e){toast("Couldn't undo: "+e.message);});};});});
+/* Browsers also fire "toggle" for a bin that is built already open; only save real changes, or saving would bump the
+   version and refresh the page in a loop. ("toggle" doesn't bubble, so it's caught on the way down.) */
+on('toggle','.bin[data-bin]',function(d,ev){if(ev.target!==d||!!PREFS.bins[d.dataset.bin]===d.open)return;
+  PREFS.bins[d.dataset.bin]=d.open;var b={};b[d.dataset.bin]=d.open;savePrefs({bins:b});},true);
+on('click','#status-dot',function(){scanNow();});   /* while a scan runs it just says so */
+on('click','#card-sign-in',function(){api('/api/sign-in').then(function(){
+  toast("The sign-in window is opening. It closes by itself once you're signed in.");}).catch(function(e){toast(e.message);});});
 
 /* --- dialogs ------------------------------------------------------------ */
 var settings=document.getElementById('settings'),itemDlg=document.getElementById('add-item'),itemForm=document.getElementById('add-form');
@@ -1976,18 +2004,17 @@ function openMenu(){var m=menuParts();if(!m.box)return;m.box.hidden=false;m.btn.
 var MENU_DO={quick:function(){openQuick();},add:function(){openItemForm(null,null);},settings:function(){openSettings();},scan:function(){scanNow();},
   update:function(){openSettings('app','updates-sec');document.getElementById('update-check').click();},
   quit:function(){quitNow();}};
-function wireMenu(){var m=menuParts();if(!m.btn)return;
-  m.btn.addEventListener('click',function(){if(m.box.hidden)openMenu();else closeMenu(true);});
-  m.box.addEventListener('click',function(ev){var b=ev.target.closest('[data-menu]');if(!b)return;
-    if(b.dataset.menu==='quit'&&!b.dataset.armed){b.dataset.armed='1';b.textContent='Click again to quit';   /* quitting can't be undone, so it asks once */
-      setTimeout(function(){if(b.isConnected){delete b.dataset.armed;b.textContent='Quit Birdbrain';}},4000);return;}
-    closeMenu(true);MENU_DO[b.dataset.menu]();});
-  m.box.addEventListener('keydown',function(ev){var its=[].slice.call(m.box.querySelectorAll('[role=menuitem]')),i=its.indexOf(document.activeElement),k=ev.key;
-    if(k==='ArrowDown')its[(i+1)%its.length].focus();else if(k==='ArrowUp')its[(i-1+its.length)%its.length].focus();
-    else if(k==='Home')its[0].focus();else if(k==='End')its[its.length-1].focus();
-    else if(k==='Escape'){closeMenu(true);}else if(k==='Tab'){closeMenu(false);return;}
-    else if(k===' '){if(document.activeElement)document.activeElement.click();}else return;   /* Space presses the item, as in any menu */
-    ev.preventDefault();ev.stopPropagation();});}
+on('click','#open-menu',function(){var m=menuParts();if(m.box.hidden)openMenu();else closeMenu(true);});
+on('click','#app-menu [data-menu]',function(b){
+  if(b.dataset.menu==='quit'&&!b.dataset.armed){b.dataset.armed='1';b.textContent='Click again to quit';   /* quitting can't be undone, so it asks once */
+    setTimeout(function(){if(b.isConnected){delete b.dataset.armed;b.textContent='Quit Birdbrain';}},4000);return;}
+  closeMenu(true);MENU_DO[b.dataset.menu]();});
+on('keydown','#app-menu',function(box,ev){var its=[].slice.call(box.querySelectorAll('[role=menuitem]')),i=its.indexOf(document.activeElement),k=ev.key;
+  if(k==='ArrowDown')its[(i+1)%its.length].focus();else if(k==='ArrowUp')its[(i-1+its.length)%its.length].focus();
+  else if(k==='Home')its[0].focus();else if(k==='End')its[its.length-1].focus();
+  else if(k==='Escape'){closeMenu(true);}else if(k==='Tab'){closeMenu(false);return;}
+  else if(k===' '){if(document.activeElement)document.activeElement.click();}else return;   /* Space presses the item, as in any menu */
+  ev.preventDefault();ev.stopPropagation();});
 document.addEventListener('pointerdown',function(ev){if(!ev.target.closest('.tools'))closeMenu(false);});
 /* double-click a card (not its link, tick box or buttons) for its details */
 wrap.addEventListener('dblclick',function(ev){var li=ev.target.closest('.row[data-id]');
@@ -2124,13 +2151,14 @@ function rowMatches(row){if(!FILTER)return true;
 function applyFilter(){var shown=0;
   wrap.querySelectorAll('.bands .row').forEach(function(r){var ok=rowMatches(r);r.hidden=!ok;if(ok)shown++;});
   wrap.querySelectorAll('.bands ul').forEach(function(ul){var any=!!ul.querySelector('.row:not([hidden])'),h=ul.previousElementSibling;
-    ul.hidden=!any;if(h&&h.classList.contains('grp'))h.hidden=!any;});
+    var off=!any&&!ul.classList.contains('empty');   /* a day with nothing in it is hidden by its own style, and comes out while a card is carried */
+    ul.hidden=off;if(h&&h.classList.contains('grp'))h.hidden=off;});
   var tools=wrap.querySelector('.tools'),chip=document.getElementById('filter-chip');if(chip)chip.remove();
   if(FILTER&&tools){chip=document.createElement('button');chip.type='button';chip.id='filter-chip';chip.className='filter-chip';
     chip.title='Show everything again (Esc)';chip.textContent='Only '+FILTER.says+(shown?'':': nothing')+' ✕';
     chip.addEventListener('click',function(){setFilter(null);});tools.insertBefore(chip,tools.firstChild);}
   return shown;}
-function setFilter(f){FILTER=f;var n=applyFilter();
+function setFilter(f){FILTER=f;var was=CALM.matches?null:layout(),n=applyFilter();if(was)glide(was);
   document.getElementById('announce').textContent=f?('Showing only '+f.says+': '+n+(n===1?' item':' items')):'Showing everything';}
 function readFilter(text){var t=text.trim(),low=t.toLowerCase(),plain=function(s){return s.toLowerCase().replace(/[^a-z0-9]/g,'');};
   if(!t||t==='#'||t==='@')return null;
@@ -2506,7 +2534,7 @@ settings.querySelectorAll('.courses:not(.labels) li').forEach(function(li){
   li.querySelector('.nick').addEventListener('input',function(ev){updateCourse(code,{nick:ev.target.value.trim()});});
   li.querySelector('.reset').addEventListener('click',function(){delete PREFS.courses[code];applyCourses();syncCourseInputs();saveCourse(code);});
 });
-
+/*DRAG*/
 bindBoard();
 
 if(LIVE){
@@ -2535,4 +2563,5 @@ if(LIVE){
 })();"""
 
 # every script gets the same motion helpers (CALM, MS, EASE: motion.py)
+JS = JS.replace("/*DRAG*/", dragdrop.JS)
 JS, CHROME_JS, SETUP_JS = (script.replace("/*MOTION*/", motion.SCRIPT) for script in (JS, CHROME_JS, SETUP_JS))

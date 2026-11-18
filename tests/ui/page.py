@@ -80,11 +80,15 @@ class PageTest(unittest.TestCase):
             request_mail_scan=lambda d: None, on_change=lambda: None, actions=self.actions(),
             render_quick=lambda t: report.render_quick(t, prefs.load(s)))
         self.server.start()
-        self.context = self._browser.new_context(viewport={"width": 1280, "height": 900})
+        self.context = self._browser.new_context(**self.context_options())
         self.page = self.context.new_page()
         self.errors: list[str] = []
         self.page.on("pageerror", lambda e: self.errors.append(str(e)))
         self.open()
+
+    def context_options(self) -> dict:
+        """How the browser window is set up; a test adds what it needs (a touch screen, say)."""
+        return {"viewport": {"width": 1280, "height": 900}}
 
     def open(self):
         self.page.goto(self.server.url)

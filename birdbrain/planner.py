@@ -89,6 +89,7 @@ def move(store: Store, item_id: str, to: str, day: date | None = None, before: s
     if day < today:
         raise Refused("That day has gone by.")
     there = _day_cards(store, day, today, without=item_id)
+    same_day = not item.done_at and store.placements().get(item_id) != "archived" and day_of(item, today) == day
     undo = store.snapshot([item_id] + [i.id for i in there])
     deadline = item.due.date()
     note = ""
@@ -113,4 +114,4 @@ def move(store: Store, item_id: str, to: str, day: date | None = None, before: s
     store.set_ranks({i: float(n) for n, i in enumerate(order)})
     where = say_day(day, today)
     return {"ok": True, "to": "day", "day": day.isoformat(), "position": at + 1, "of": len(order), "undo": undo,
-            "says": f"Moved to {where}{note}", "heard": f"Moved to {where}, {say_place(at + 1, len(order))}{note}"}
+            "says": f"Moved to {say_place(at + 1, len(order))}" if same_day else f"Moved to {where}{note}", "heard": f"Moved to {where}, {say_place(at + 1, len(order))}{note}"}

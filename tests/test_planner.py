@@ -38,6 +38,7 @@ class Reorder(unittest.TestCase):
         got = planner.move(self.s, "moodle:cm:3", "day", D(1), before="moodle:cm:1", now=NOW)
         self.assertEqual(under(board(self.s), "Tomorrow"), ["Lab report", "Reading", "Problem set"])
         self.assertEqual((got["position"], got["of"], got["heard"]), (1, 3, "Moved to Tomorrow, first of three"))
+        self.assertEqual(got["says"], "Moved to first of three")     # same day: the page says the place, not the day
         planner.move(self.s, "moodle:cm:1", "day", D(1), before=None, now=NOW)        # no card after it: last
         self.assertEqual(under(board(self.s), "Tomorrow"), ["Lab report", "Problem set", "Reading"])
 
